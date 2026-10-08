@@ -220,6 +220,19 @@ export function Spinner() {
   return <div className="spinner" aria-label="Loading" />;
 }
 
+/**
+ * The Oromia Health Bureau logo mark. Rendered as the brand badge in the
+ * header and on the auth cards. The source lives in `public/logo.png`.
+ */
+export function BrandMark({ size = 40 }: { size?: number }) {
+  return (
+    <span className="brand__mark" style={{ width: size, height: size }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/logo.png" alt="Oromia Health Bureau logo" width={size} height={size} />
+    </span>
+  );
+}
+
 /** Derives up-to-two uppercase initials from a display name. */
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

@@ -9,11 +9,11 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, LogOut, ShieldCheck } from 'lucide-react';
+import { LogOut, ShieldCheck } from 'lucide-react';
 import { RoleName } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { NotificationBell } from './NotificationBell';
-import { Avatar } from './ui';
+import { Avatar, BrandMark } from './ui';
 import type { ReactNode } from 'react';
 
 const ADMIN_NAV = [
@@ -65,9 +65,7 @@ export function PageShell({ children }: { children: ReactNode }) {
       <header className="app-header">
         <div className="app-header__inner">
           <Link href={isAdmin ? '/admin' : '/lab'} className="brand" style={{ textDecoration: 'none' }}>
-            <span className="brand__mark">
-              <Activity size={22} />
-            </span>
+            <BrandMark size={40} />
             <span className="brand__text">
               <span className="brand__en">Oromia Health Bureau</span><br></br>
               <span className="brand__om">Biiroo Eegumsa Fayyaa Oromiyaa</span>

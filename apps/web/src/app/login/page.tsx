@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AtSign, Lock, Activity, ArrowRight } from 'lucide-react';
+import { AtSign, Lock, ArrowRight } from 'lucide-react';
 import { useAuth, landingFor } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
-import { Button, Callout, Card, Field } from '@/components/ui';
+import { BrandMark, Button, Callout, Card, Field } from '@/components/ui';
 
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -42,9 +42,7 @@ export default function LoginPage() {
     <div className="auth-wrap">
       <Card className="auth-card">
         <div className="brand">
-          <span className="brand__mark">
-            <Activity size={24} />
-          </span>
+          <BrandMark size={44} />
           <span className="brand__text">
             <span className="brand__en">Oromia Health Bureau</span><br></br>
             <span className="brand__om">Biiroo Eegumsa Fayyaa Oromiyaa</span>

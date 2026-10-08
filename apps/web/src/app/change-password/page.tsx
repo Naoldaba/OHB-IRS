@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Activity, ArrowRight } from 'lucide-react';
+import { Lock, ArrowRight } from 'lucide-react';
 import { useAuth, homeFor } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
-import { Button, Callout, Card, Field, Spinner } from '@/components/ui';
+import { BrandMark, Button, Callout, Card, Field, Spinner } from '@/components/ui';
 
 export default function ChangePasswordPage() {
   const { user, loading, refresh, logout } = useAuth();
@@ -60,9 +60,7 @@ export default function ChangePasswordPage() {
     <div className="auth-wrap">
       <Card className="auth-card">
         <div className="brand">
-          <span className="brand__mark">
-            <Activity size={24} />
-          </span>
+          <BrandMark size={44} />
           <span className="brand__text">
             <span className="brand__en">Oromia Health Bureau</span><br></br>
             <span className="brand__om">Biiroo Eegumsa Fayyaa Oromiyaa</span>
