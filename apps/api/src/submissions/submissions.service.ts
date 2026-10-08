@@ -58,7 +58,7 @@ export class SubmissionsService {
 
   // ---- Queries --------------------------------------------------------------
 
-  list(user: AuthUser, query: ListSubmissionsQueryDto) {
+  async list(user: AuthUser, query: ListSubmissionsQueryDto) {
     const where: Prisma.ReportSubmissionWhereInput = {};
     if (query.status) where.status = query.status;
     if (query.reportTypeId) where.reportTypeId = query.reportTypeId;
@@ -70,11 +70,19 @@ export class SubmissionsService {
       where.laboratoryId = query.laboratoryId;
     }
 
-    return this.prisma.reportSubmission.findMany({
+    const submissions = await this.prisma.reportSubmission.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       include: LIST_INCLUDE,
     });
+
+    // Flagged-for-review filter: submissions carrying one or more FLAG-severity
+    // rule outcomes (snapshotted at submit time). `flags` is jsonb, so this is a
+    // post-filter rather than a DB predicate.
+    if (query.flagged === 'true') {
+      return submissions.filter((s) => Array.isArray(s.flags) && s.flags.length > 0);
+    }
+    return submissions;
   }
 
   /** Full submission detail incl. the pinned schema and its render model. */
@@ -85,8 +93,15 @@ export class SubmissionsService {
         ...LIST_INCLUDE,
         definitionVersion: { select: { id: true, version: true, status: true, fieldSchema: true } },
         feedback: {
+          where: { parentId: null },
           orderBy: { createdAt: 'asc' },
-          include: { author: { select: { id: true, fullName: true } } },
+          include: {
+            author: { select: { id: true, fullName: true } },
+            replies: {
+              orderBy: { createdAt: 'asc' },
+              include: { author: { select: { id: true, fullName: true } } },
+            },
+          },
         },
         versions: { orderBy: { versionNumber: 'asc' } },
       },
@@ -240,16 +255,47 @@ export class SubmissionsService {
 
   // ---- Feedback -------------------------------------------------------------
 
+  /**
+   * Add feedback to a submission, or reply within an existing thread. Both
+   * Bureau admins and the owning laboratory may comment (so a thread is a real
+   * two-way conversation); only admins may raise a REVISION_REQUEST. When
+   * replying, the anchor (section/field) is inherited from the thread root.
+   */
   async addFeedback(id: string, user: AuthUser, dto: AddFeedbackDto) {
     const submission = await this.load(id);
+    this.assertAccess(submission, user);
+
+    // Labs can comment and reply, but never author a revision request.
+    const type =
+      user.role === RoleName.BUREAU_ADMIN
+        ? dto.type ?? FeedbackType.COMMENT
+        : FeedbackType.COMMENT;
+
+    let sectionKey = dto.sectionKey;
+    let fieldKey = dto.fieldKey;
+    if (dto.parentId) {
+      const parent = await this.prisma.feedback.findUnique({ where: { id: dto.parentId } });
+      if (!parent || parent.submissionId !== submission.id) {
+        throw new BadRequestException('Reply target does not belong to this submission');
+      }
+      if (parent.parentId) {
+        // Keep threads one level deep: reply to the root, not to another reply.
+        throw new BadRequestException('Replies can only be posted on a thread root');
+      }
+      // A reply inherits its root's anchor; it cannot re-anchor the thread.
+      sectionKey = parent.sectionKey ?? undefined;
+      fieldKey = parent.fieldKey ?? undefined;
+    }
+
     const feedback = await this.prisma.feedback.create({
       data: {
         submissionId: submission.id,
         authorId: user.id,
-        type: dto.type ?? FeedbackType.COMMENT,
+        type,
         message: dto.message,
-        sectionKey: dto.sectionKey,
-        fieldKey: dto.fieldKey,
+        sectionKey,
+        fieldKey,
+        parentId: dto.parentId,
       },
       include: { author: { select: { id: true, fullName: true } } },
     });
@@ -258,18 +304,26 @@ export class SubmissionsService {
       actorId: user.id,
       entityType: 'ReportSubmission',
       entityId: submission.id,
-      metadata: { feedbackId: feedback.id, type: feedback.type },
+      metadata: { feedbackId: feedback.id, type: feedback.type, parentId: dto.parentId ?? null },
     });
     return feedback;
   }
 
+  /** All feedback for a submission as threads: roots (oldest first), each with
+   *  its replies (oldest first). History is append-only. */
   async listFeedback(id: string, user: AuthUser) {
     const submission = await this.load(id);
     this.assertAccess(submission, user);
     return this.prisma.feedback.findMany({
-      where: { submissionId: id },
+      where: { submissionId: id, parentId: null },
       orderBy: { createdAt: 'asc' },
-      include: { author: { select: { id: true, fullName: true } } },
+      include: {
+        author: { select: { id: true, fullName: true } },
+        replies: {
+          orderBy: { createdAt: 'asc' },
+          include: { author: { select: { id: true, fullName: true } } },
+        },
+      },
     });
   }
 

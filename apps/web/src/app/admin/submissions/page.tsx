@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Flag } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api } from '@/lib/api';
 import type { SubmissionSummary } from '@/lib/types';
-import { Callout, Card, SegmentedToggle, Spinner, StatusPill } from '@/components/ui';
+import { Callout, Card, Pill, SegmentedToggle, Spinner, StatusPill } from '@/components/ui';
 
-type Filter = 'all' | 'review' | 'approved';
+type Filter = 'all' | 'review' | 'flagged' | 'approved';
+
+const flagCount = (s: SubmissionSummary) => (Array.isArray(s.flags) ? s.flags.length : 0);
 
 export default function AdminSubmissionsPage() {
   const router = useRouter();
@@ -40,7 +43,9 @@ export default function AdminSubmissionsPage() {
       ? true
       : filter === 'review'
         ? inReview(s)
-        : s.status === ReportStatus.APPROVED,
+        : filter === 'flagged'
+          ? flagCount(s) > 0
+          : s.status === ReportStatus.APPROVED,
   );
 
   return (
@@ -55,6 +60,7 @@ export default function AdminSubmissionsPage() {
           <SegmentedToggle<Filter>
             options={[
               { value: 'review', label: 'Needs review' },
+              { value: 'flagged', label: 'Flagged' },
               { value: 'approved', label: 'Approved' },
               { value: 'all', label: 'All' },
             ]}
@@ -89,7 +95,14 @@ export default function AdminSubmissionsPage() {
                   <td>{s.laboratory?.name ?? '—'}</td>
                   <td>{s.reportingPeriod?.label ?? '—'}</td>
                   <td>
-                    <StatusPill status={s.status} />
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <StatusPill status={s.status} />
+                      {flagCount(s) > 0 && (
+                        <Pill tone="amber">
+                          <Flag size={12} /> {flagCount(s)}
+                        </Pill>
+                      )}
+                    </span>
                   </td>
                   <td className="text-sm muted">{new Date(s.updatedAt).toLocaleString()}</td>
                 </tr>

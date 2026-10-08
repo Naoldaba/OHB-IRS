@@ -5,10 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Send } from 'lucide-react';
 import { ReportStatus, canEditData } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
-import type { SaveDraftResponse, SubmissionDetail } from '@/lib/types';
+import type { Feedback, SaveDraftResponse, SubmissionDetail } from '@/lib/types';
 import { Button, Callout, Card, Spinner, StatusPill } from '@/components/ui';
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
+import { VersionHistory } from '@/components/report/VersionHistory';
 
 function toErrorMap(errors: { path: string; message: string }[]): Record<string, string> {
   const map: Record<string, string> = {};
@@ -94,6 +95,21 @@ export default function LabSubmissionPage() {
     }
   }
 
+  async function reply(parentId: string, message: string) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.post(`/submissions/${id}/feedback`, { parentId, message });
+      // Refresh only the feedback so any in-progress draft edits are preserved.
+      const feedback = await api.get<Feedback[]>(`/submissions/${id}/feedback`);
+      setDetail((d) => (d ? { ...d, feedback } : d));
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Failed to send reply');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const submitLabel = detail.status === ReportStatus.REVISION_REQUIRED ? 'Resubmit' : 'Submit';
 
   return (
@@ -162,7 +178,22 @@ export default function LabSubmissionPage() {
         </Card>
 
         <Card title="Bureau feedback">
-          <FeedbackList feedback={detail.feedback} />
+          <FeedbackList
+            feedback={detail.feedback}
+            model={detail.renderModel}
+            onReply={reply}
+            busy={busy}
+          />
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Card title="Submission history" desc="Each time you submit or resubmit, a copy is kept.">
+          <VersionHistory
+            submissionId={id}
+            renderModel={detail.renderModel}
+            refreshKey={detail.currentVersion}
+          />
         </Card>
       </div>
     </>

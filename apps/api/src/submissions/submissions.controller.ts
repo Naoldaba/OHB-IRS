@@ -102,8 +102,10 @@ export class SubmissionsController {
     return this.submissions.approve(id, user);
   }
 
+  // Both the Bureau and the owning laboratory may comment / reply (threads are a
+  // two-way conversation). The service scopes lab access and blocks a lab from
+  // raising a revision request. No @Roles → any authenticated user, then scoped.
   @Post(':id/feedback')
-  @Roles(RoleName.BUREAU_ADMIN)
   addFeedback(
     @Param('id') id: string,
     @Body() dto: AddFeedbackDto,

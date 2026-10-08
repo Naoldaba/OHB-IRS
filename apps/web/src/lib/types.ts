@@ -5,6 +5,7 @@
  */
 
 import type {
+  Diagnostic,
   FeedbackType,
   FieldSchema,
   PeriodType,
@@ -13,6 +14,9 @@ import type {
   ReportStatus,
   RoleName,
 } from '@ohb/shared';
+
+/** A FLAG-severity rule outcome snapshotted on a submission at submit time. */
+export type SubmissionFlag = Diagnostic;
 
 export interface AuthUser {
   id: string;
@@ -89,6 +93,7 @@ export interface SubmissionSummary {
   submittedAt?: string | null;
   reviewedAt?: string | null;
   updatedAt: string;
+  flags?: SubmissionFlag[] | null;
   reportType?: { id: string; name: string; code: string };
   laboratory?: { id: string; name: string; code: string };
   reportingPeriod?: {
@@ -108,8 +113,22 @@ export interface Feedback {
   message: string;
   sectionKey?: string | null;
   fieldKey?: string | null;
+  parentId?: string | null;
   createdAt: string;
   author?: { id: string; fullName: string };
+  /** Replies, present on thread roots returned by the API. */
+  replies?: Feedback[];
+}
+
+/** An immutable snapshot written on each submit / resubmit. */
+export interface SubmissionVersionRow {
+  id: string;
+  submissionId: string;
+  versionNumber: number;
+  status: ReportStatus;
+  data: Record<string, unknown>;
+  submittedAt: string;
+  submittedBy?: { id: string; fullName: string };
 }
 
 export interface SubmissionDetail extends SubmissionSummary {

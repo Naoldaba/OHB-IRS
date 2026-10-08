@@ -193,9 +193,15 @@ model Feedback {
   // Optional anchoring to a specific section/field of the report.
   sectionKey   String?
   fieldKey     String?
+  // Threading: a reply points at the root feedback it answers. A thread is a
+  // root (parentId null) plus its replies. History is append-only — never edited.
+  parentId     String?
+  parent       Feedback?        @relation("FeedbackThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      Feedback[]       @relation("FeedbackThread")
   createdAt    DateTime         @default(now())
 
   @@index([submissionId])
+  @@index([parentId])
 }
 
 model Attachment {

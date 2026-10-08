@@ -1,4 +1,5 @@
 import {
+  IsBooleanString,
   IsEnum,
   IsObject,
   IsOptional,
@@ -54,6 +55,11 @@ export class AddFeedbackDto {
   @IsOptional()
   @IsString()
   fieldKey?: string;
+
+  /** When set, this feedback is a reply in the thread rooted at `parentId`. */
+  @IsOptional()
+  @IsString()
+  parentId?: string;
 }
 
 /** Optional query filters for the admin submission list. */
@@ -69,4 +75,9 @@ export class ListSubmissionsQueryDto {
   @IsOptional()
   @IsString()
   reportTypeId?: string;
+
+  /** `true` limits the list to submissions carrying rule FLAG outcomes. */
+  @IsOptional()
+  @IsBooleanString()
+  flagged?: string;
 }
