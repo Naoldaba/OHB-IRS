@@ -9,14 +9,20 @@ import {
   Flag,
   RotateCcw,
   AlertTriangle,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type {
   ComplianceCounts,
   DashboardAnalytics,
+  LabComplianceRow,
   ReportType,
 } from '@/lib/types';
 import { Callout, Card, Select, Spinner } from '@/components/ui';
+
+/** Compliance target the Bureau measures labs against (a policy constant, not data). */
+const REGIONAL_MANDATE = 0.9;
 
 /**
  * Bureau dashboard — compliance & analytics (Phase 8). Every figure comes from
@@ -106,56 +112,67 @@ function Dashboard({ data }: { data: DashboardAnalytics }) {
   const { overview } = data;
   const hasExpectations = overview.expected > 0;
 
+  // Compliance trend series (oldest → newest) for the hero sparkline.
+  const complianceSeries = useMemo(
+    () => data.trends.map((t) => t.complianceRate),
+    [data.trends],
+  );
+  const deltaVsMandate = overview.complianceRate - REGIONAL_MANDATE;
+  const revisionRate = overview.submitted > 0 ? overview.revisionRequired / overview.submitted : 0;
+
   return (
     <>
-      {/* Headline KPIs */}
-      <div className="grid grid--4" style={{ marginBottom: 18 }}>
-        <Stat
-          icon={<CheckCircle2 size={14} />}
-          label="Reporting compliance"
-          value={hasExpectations ? pct(overview.complianceRate) : '—'}
-          sub={
-            hasExpectations
-              ? `${overview.submitted} of ${overview.expected} expected submitted`
-              : 'No expected submissions yet'
-          }
-          dot="var(--state-approved)"
-        />
-        <Stat
-          icon={<ClipboardList size={14} />}
+      {/* Headline KPI buckets */}
+      <div className="kpi-row">
+        <Kpi
+          icon={<ClipboardList size={15} />}
           label="Expected submissions"
           value={overview.expected}
-          sub="Across opened reporting periods"
+          foot={`Across ${overview.totalLaboratories} labs · opened periods`}
         />
-        <Stat
-          icon={<Clock size={14} />}
+        <Kpi
+          icon={<CheckCircle2 size={15} />}
+          label="Reporting compliance"
+          value={hasExpectations ? pct(overview.complianceRate) : '—'}
+          valueTone="accent"
+          foot={
+            hasExpectations ? (
+              <Delta value={deltaVsMandate} suffix={`vs ${pct(REGIONAL_MANDATE)} mandate`} />
+            ) : (
+              'No expected submissions yet'
+            )
+          }
+          spark={complianceSeries.length > 1 ? complianceSeries : undefined}
+        />
+        <Kpi
+          icon={<Clock size={15} />}
           label="Pending review"
           value={overview.pendingReview}
-          sub="Submitted, awaiting the Bureau"
-          dot="var(--state-review)"
+          foot="Submitted, awaiting the Bureau"
         />
-        <Stat
-          icon={<AlertTriangle size={14} />}
+        <Kpi
+          icon={<AlertTriangle size={15} />}
           label="Overdue"
           value={overview.overdue}
-          sub="Past due and not submitted"
-          dot="var(--state-overdue)"
+          valueTone={overview.overdue > 0 ? 'danger' : undefined}
+          foot="Past due and not submitted"
+        />
+        <Kpi
+          icon={<RotateCcw size={15} />}
+          label="Revision required"
+          value={overview.revisionRequired}
+          foot={hasExpectations ? `${pct(revisionRate)} of submitted reports` : 'Sent back to labs'}
         />
       </div>
 
-      <div className="grid grid--4" style={{ marginBottom: 18 }}>
+      {/* Secondary tallies */}
+      <div className="grid grid--3" style={{ marginBottom: 18 }}>
         <Stat icon={<Building2 size={14} />} label="Active laboratories" value={overview.totalLaboratories} />
         <Stat
           icon={<CheckCircle2 size={14} />}
           label="Approved"
           value={overview.approved}
           dot="var(--state-approved)"
-        />
-        <Stat
-          icon={<RotateCcw size={14} />}
-          label="Revision required"
-          value={overview.revisionRequired}
-          dot="var(--state-revision)"
         />
         <Stat
           icon={<Flag size={14} />}
@@ -180,10 +197,10 @@ function Dashboard({ data }: { data: DashboardAnalytics }) {
           </Card>
 
           <Card
-            title="Laboratory comparison"
-            desc="Compliance by laboratory (submitted ÷ expected), most compliant first."
+            title="Regional laboratory submission status"
+            desc="Each bar's height is the number of reports expected of that lab (shared scale, tallest = busiest); the stack shows their current status and the % below is compliance (submitted ÷ expected)."
           >
-            <LabComparison data={data} />
+            <LabStatusBars data={data} />
           </Card>
 
           <Card
@@ -255,7 +272,97 @@ function StatusMeter({ counts }: { counts: ComplianceCounts }) {
   );
 }
 
-function LabComparison({ data }: { data: DashboardAnalytics }) {
+/** A headline "bucket" tile: big value, an icon chip, a footer (delta or caption),
+ *  and an optional compliance sparkline. */
+function Kpi({
+  icon,
+  label,
+  value,
+  valueTone,
+  foot,
+  spark,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  valueTone?: 'accent' | 'danger';
+  foot?: React.ReactNode;
+  spark?: number[];
+}) {
+  const toneClass =
+    valueTone === 'accent'
+      ? ' kpi__value--accent'
+      : valueTone === 'danger'
+        ? ' kpi__value--danger'
+        : '';
+  return (
+    <div className="kpi">
+      <div className="kpi__top">
+        <span className="kpi__label">{label}</span>
+        <span className="kpi__chip">{icon}</span>
+      </div>
+      <div className={`kpi__value${toneClass}`}>{value}</div>
+      {spark && <Sparkline values={spark} />}
+      {foot && <div className="kpi__foot">{foot}</div>}
+    </div>
+  );
+}
+
+/** Signed change against a target, with a direction arrow and status color. */
+function Delta({ value, suffix }: { value: number; suffix: string }) {
+  const up = value >= 0;
+  return (
+    <>
+      <span className={`kpi__delta ${up ? 'kpi__delta--up' : 'kpi__delta--down'}`}>
+        {up ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+        {up ? '+' : ''}
+        {Math.round(value * 100)}%
+      </span>{' '}
+      {suffix}
+    </>
+  );
+}
+
+/** Minimal inline-SVG sparkline (2px line, no axes) for the compliance series. */
+function Sparkline({ values }: { values: number[] }) {
+  const w = 120;
+  const h = 34;
+  const pad = 3;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const span = max - min || 1;
+  const step = values.length > 1 ? (w - pad * 2) / (values.length - 1) : 0;
+  const points = values.map((v, i) => {
+    const x = pad + i * step;
+    const y = h - pad - ((v - min) / span) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  return (
+    <svg className="kpi__spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true">
+      <polyline
+        points={points.join(' ')}
+        fill="none"
+        stroke="var(--primary-accent)"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** The five mutually-exclusive states stacked per lab, bottom (good) → top (unmet). */
+const LAB_SEGMENTS = [
+  { key: 'approved', label: 'Approved', color: 'var(--state-approved)' },
+  { key: 'pendingReview', label: 'In review', color: 'var(--state-review)' },
+  { key: 'revisionRequired', label: 'Revision required', color: 'var(--state-revision)' },
+  { key: 'overdue', label: 'Overdue', color: 'var(--state-overdue)' },
+  { key: 'pending', label: 'Not yet due', color: 'var(--state-pending)' },
+] as const;
+
+/** Vertical stacked bars, one per laboratory; each bar's full height is that lab's
+ *  expected slots, split by current status. A dashed line marks the regional mandate. */
+function LabStatusBars({ data }: { data: DashboardAnalytics }) {
   const rows = useMemo(
     () =>
       data.laboratories
@@ -264,34 +371,76 @@ function LabComparison({ data }: { data: DashboardAnalytics }) {
     [data.laboratories],
   );
 
+  // Shared count scale: the tallest bar is the lab with the most expected reports,
+  // so bar height encodes volume and bars are comparable across labs.
+  const maxExpected = useMemo(() => Math.max(...rows.map((r) => r.expected), 1), [rows]);
+  // Three gridlines (top / middle / baseline) carrying the report-count scale.
+  const gridlines = [
+    { frac: 1, count: maxExpected },
+    { frac: 0.5, count: Math.round(maxExpected / 2) },
+    { frac: 0, count: 0 },
+  ];
+
   if (rows.length === 0) {
     return <div className="table__empty">No laboratory is currently expected to report.</div>;
   }
 
   return (
-    <div>
-      {rows.map((l) => (
-        <div className="barrow" key={l.laboratoryId}>
-          <span className="barrow__label" title={l.laboratoryName}>
-            {l.laboratoryName}
-          </span>
-          <span
-            className="barrow__track"
-            title={`${l.submitted} of ${l.expected} submitted`}
-          >
-            <span className="barrow__fill" style={{ width: `${l.complianceRate * 100}%` }} />
-          </span>
-          <span className="barrow__meta">
-            <b>{pct(l.complianceRate)}</b>
-            {l.overdue > 0 && (
-              <>
-                {' · '}
-                <span style={{ color: 'var(--state-overdue)' }}>{l.overdue} overdue</span>
-              </>
-            )}
-          </span>
+    <>
+      <div className="labchart__scroll">
+        <div className="labchart" role="img" aria-label="Submission status by laboratory (bar height = reports expected)">
+          {gridlines.map((g) => (
+            <div className="labchart__grid" key={g.frac} style={{ bottom: `${g.frac * 100}%` }}>
+              <span className="labchart__grid-label">{g.count}</span>
+            </div>
+          ))}
+          {rows.map((l) => (
+            <LabBar key={l.laboratoryId} lab={l} maxExpected={maxExpected} />
+          ))}
         </div>
-      ))}
+        <div className="labaxis" aria-hidden="true">
+          {rows.map((l) => (
+            <div className="labaxis__tick" key={l.laboratoryId}>
+              <span className="labaxis__pct">{pct(l.complianceRate)}</span>
+              <span className="labaxis__code" title={l.laboratoryName}>
+                {l.laboratoryCode}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="legend">
+        {LAB_SEGMENTS.map((s) => (
+          <span className="legend__item" key={s.key}>
+            <span className="legend__swatch" style={{ background: s.color }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function LabBar({ lab, maxExpected }: { lab: LabComplianceRow; maxExpected: number }) {
+  const total = lab.expected || 1;
+  // Bar occupies a share of the plot equal to its expected volume vs the busiest lab.
+  const barHeight = `${(lab.expected / maxExpected) * 100}%`;
+  return (
+    <div className="labcol" title={`${lab.laboratoryName}: ${lab.submitted} of ${lab.expected} expected submitted`}>
+      <div className="labbar__stack" style={{ height: barHeight }}>
+        {LAB_SEGMENTS.map((s) => {
+          const n = lab[s.key];
+          if (n <= 0) return null;
+          return (
+            <div
+              key={s.key}
+              className="labbar__seg"
+              style={{ flexBasis: `${(n / total) * 100}%`, background: s.color }}
+              title={`${s.label}: ${n}`}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

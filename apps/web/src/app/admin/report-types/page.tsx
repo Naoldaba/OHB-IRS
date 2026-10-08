@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil, Check, X } from 'lucide-react';
 import { PeriodType } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
 import type { ReportCategory, ReportType } from '@/lib/types';
@@ -50,7 +50,7 @@ export default function ReportTypesPage() {
 
       <div className="split">
         <div>
-          <NewCategoryCard onCreated={reload} />
+          <CategoriesCard categories={categories} onChanged={reload} />
           <NewReportTypeCard categories={categories} onCreated={reload} />
         </div>
 
@@ -95,7 +95,128 @@ export default function ReportTypesPage() {
   );
 }
 
-function NewCategoryCard({ onCreated }: { onCreated: () => Promise<void> }) {
+function CategoriesCard({
+  categories,
+  onChanged,
+}: {
+  categories: ReportCategory[];
+  onChanged: () => Promise<void>;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  return (
+    <Card title="Categories" desc="Group report types. Rename or edit the description inline.">
+      {categories.length > 0 && (
+        <table className="table" style={{ marginBottom: 16 }}>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Reports</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {categories.map((c) =>
+              editingId === c.id ? (
+                <EditCategoryRow
+                  key={c.id}
+                  category={c}
+                  onDone={async () => {
+                    setEditingId(null);
+                    await onChanged();
+                  }}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <tr key={c.id}>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{c.name}</div>
+                    {c.description && <div className="text-sm muted">{c.description}</div>}
+                  </td>
+                  <td>
+                    <Pill tone="slate">{c._count?.reportTypes ?? 0}</Pill>
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    <Button variant="ghost" size="sm" onClick={() => setEditingId(c.id)}>
+                      <Pencil size={14} /> Edit
+                    </Button>
+                  </td>
+                </tr>
+              ),
+            )}
+          </tbody>
+        </table>
+      )}
+      <NewCategoryForm onCreated={onChanged} />
+    </Card>
+  );
+}
+
+function EditCategoryRow({
+  category,
+  onDone,
+  onCancel,
+}: {
+  category: ReportCategory;
+  onDone: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(category.name);
+  const [description, setDescription] = useState(category.description ?? '');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.patch(`/report-categories/${category.id}`, {
+        name: name.trim(),
+        description: description.trim(),
+      });
+      await onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to save category');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <tr>
+      <td colSpan={2}>
+        <input
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          minLength={2}
+          maxLength={120}
+          required
+          style={{ marginBottom: 6 }}
+        />
+        <input
+          className="input"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          maxLength={500}
+          placeholder="Description (optional)"
+        />
+        {error && <div className="field__error">{error}</div>}
+      </td>
+      <td style={{ textAlign: 'right', verticalAlign: 'top' }}>
+        <div style={{ display: 'inline-flex', gap: 4 }}>
+          <Button variant="ghost" size="sm" onClick={save} disabled={busy || name.trim().length < 2}>
+            <Check size={14} /> Save
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+            <X size={14} />
+          </Button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function NewCategoryForm({ onCreated }: { onCreated: () => Promise<void> }) {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -116,27 +237,25 @@ function NewCategoryCard({ onCreated }: { onCreated: () => Promise<void> }) {
   }
 
   return (
-    <Card title="New category">
-      <form onSubmit={submit}>
-        {error && (
-          <div style={{ marginBottom: 12 }}>
-            <Callout tone="danger">{error}</Callout>
-          </div>
-        )}
-        <Field label="Category name" hint="e.g. Routine Lab Report">
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Routine Lab Report"
-            required
-          />
-        </Field>
-        <Button type="submit" variant="secondary" size="sm" disabled={busy || !name.trim()}>
-          <Plus size={15} /> Add category
-        </Button>
-      </form>
-    </Card>
+    <form onSubmit={submit}>
+      {error && (
+        <div style={{ marginBottom: 12 }}>
+          <Callout tone="danger">{error}</Callout>
+        </div>
+      )}
+      <Field label="New category" hint="e.g. Routine Lab Report">
+        <input
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Routine Lab Report"
+          required
+        />
+      </Field>
+      <Button type="submit" variant="secondary" size="sm" disabled={busy || !name.trim()}>
+        <Plus size={15} /> Add category
+      </Button>
+    </form>
   );
 }
 

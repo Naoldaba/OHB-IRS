@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { FileText, BarChart3, CalendarRange, Inbox, ScrollText, ArrowRight } from 'lucide-react';
+import { FileText, BarChart3, CalendarRange, Inbox, ScrollText, ClipboardList, ArrowRight } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api } from '@/lib/api';
 import type { ReportType, SubmissionSummary } from '@/lib/types';
@@ -65,6 +65,12 @@ export default function AdminOverview() {
               icon={<CalendarRange size={20} />}
               title="Reporting periods"
               desc="Open the Ethiopian-calendar periods labs report against."
+            />
+            <ActionCard
+              href="/admin/requirements"
+              icon={<ClipboardList size={20} />}
+              title="Reporting requirements"
+              desc="Set which laboratories are expected to submit each report — the basis for compliance tracking."
             />
             <ActionCard
               href="/admin/submissions"

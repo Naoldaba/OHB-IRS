@@ -62,6 +62,8 @@ export interface ReportCategory {
   code: string;
   name: string;
   description?: string | null;
+  /** Present on the admin list endpoint. */
+  _count?: { reportTypes: number };
 }
 
 export interface ReportType {
@@ -90,6 +92,21 @@ export interface DefinitionVersionSummary {
 
 export interface DefinitionVersion extends DefinitionVersionSummary {
   fieldSchema: FieldSchema | Record<string, never>;
+}
+
+/**
+ * Which laboratories are expected to submit a given report type. A null
+ * `laboratoryId` expects every active laboratory. Drives expected-vs-submitted
+ * compliance in the analytics dashboard.
+ */
+export interface ReportingRequirement {
+  id: string;
+  reportTypeId: string;
+  laboratoryId: string | null;
+  isActive: boolean;
+  createdAt: string;
+  reportType?: { id: string; name: string; code: string };
+  laboratory?: { id: string; name: string; code: string } | null;
 }
 
 export interface ReportingPeriod {
