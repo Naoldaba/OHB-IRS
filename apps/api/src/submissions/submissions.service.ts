@@ -9,20 +9,25 @@ import {
 import { Prisma } from '@prisma/client';
 import {
   AuditAction,
+  Diagnostic,
+  EvaluableRule,
   FeedbackType,
   FieldSchema,
   ReportStatus,
   RoleName,
+  RuleSeverity,
   WorkflowAction,
   buildRenderModel,
   canEditData,
   emptySubmissionData,
+  evaluate,
   transitionFor,
   validateSubmissionData,
 } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
+import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
 import {
   AddFeedbackDto,
   CreateSubmissionDto,
@@ -164,12 +169,17 @@ export class SubmissionsService {
         `Data can only be edited while the report is a draft or awaiting revision (current: ${submission.status})`,
       );
     }
-    const schema = await this.requireSchema(submission.definitionVersionId);
+    const { schema, rules } = await this.requireDefinition(submission.definitionVersionId);
     const result = validateSubmissionData(schema, dto.data, { requireComplete: false });
+
+    // Non-blocking rule evaluation for UX: recompute calculated fields and
+    // surface diagnostics/effects. Calculated (read-only) values are persisted
+    // so the stored draft stays consistent; they are recomputed again on submit.
+    const evaluation = evaluate(schema, rules, result.normalized);
 
     const updated = await this.prisma.reportSubmission.update({
       where: { id },
-      data: { data: result.normalized as Prisma.InputJsonValue },
+      data: { data: evaluation.values as Prisma.InputJsonValue },
       include: LIST_INCLUDE,
     });
     await this.audit.record({
@@ -178,7 +188,16 @@ export class SubmissionsService {
       entityType: 'ReportSubmission',
       entityId: id,
     });
-    return { submission: updated, validation: { ok: result.ok, errors: result.errors } };
+    return {
+      submission: updated,
+      validation: { ok: result.ok, errors: result.errors },
+      evaluation: {
+        diagnostics: evaluation.diagnostics,
+        effects: evaluation.effects,
+        calculated: evaluation.calculated,
+        flags: evaluation.flags,
+      },
+    };
   }
 
   submit(id: string, user: AuthUser) {
@@ -268,8 +287,9 @@ export class SubmissionsService {
 
   private async runLabTransition(id: string, user: AuthUser, action: Extract<WorkflowAction, 'submit' | 'resubmit'>) {
     const submission = await this.loadForLab(id, user);
-    const schema = await this.requireSchema(submission.definitionVersionId);
-    // Authoritative, complete validation. Store the recomputed normalized data.
+    const { schema, rules } = await this.requireDefinition(submission.definitionVersionId);
+
+    // 1) Authoritative structural validation (types + schema-required completeness).
     const result = validateSubmissionData(schema, submission.data, { requireComplete: true });
     if (!result.ok) {
       throw new UnprocessableEntityException({
@@ -277,7 +297,24 @@ export class SubmissionsService {
         errors: result.errors,
       });
     }
-    return this.transition(submission, action, user, { normalizedData: result.normalized });
+
+    // 2) Authoritative rule evaluation: recompute calculated fields server-side
+    //    (client values are never trusted) and enforce ERROR-severity rules.
+    const evaluation = evaluate(schema, rules, result.normalized);
+    const errors = evaluation.diagnostics.filter((d) => d.severity === RuleSeverity.ERROR);
+    if (errors.length > 0) {
+      throw new UnprocessableEntityException({
+        message: 'Report violates one or more business rules',
+        errors: errors.map((d) => ({ path: d.fieldPath ?? d.ruleKey, message: d.message })),
+        diagnostics: evaluation.diagnostics,
+      });
+    }
+
+    // 3) Persist the rule-computed values and the FLAG outcomes snapshot.
+    return this.transition(submission, action, user, {
+      normalizedData: evaluation.values,
+      flags: evaluation.flags,
+    });
   }
 
   /**
@@ -289,7 +326,11 @@ export class SubmissionsService {
     submission: Prisma.ReportSubmissionGetPayload<object>,
     action: WorkflowAction,
     user: AuthUser,
-    opts: { normalizedData?: Record<string, unknown>; metadata?: Record<string, unknown> } = {},
+    opts: {
+      normalizedData?: Record<string, unknown>;
+      flags?: Diagnostic[];
+      metadata?: Record<string, unknown>;
+    } = {},
   ) {
     const def = transitionFor(action);
     const current = submission.status as ReportStatus;
@@ -305,6 +346,9 @@ export class SubmissionsService {
       data.submittedAt = now;
       data.submittedBy = { connect: { id: user.id } };
       if (opts.normalizedData) data.data = opts.normalizedData as Prisma.InputJsonValue;
+      // Snapshot of FLAG-severity rule outcomes captured at submit time (advisory,
+      // surfaced to Bureau reviewers).
+      data.flags = (opts.flags ?? []) as unknown as Prisma.InputJsonValue;
     }
     if (action === 'approve') {
       data.reviewedAt = now;
@@ -370,24 +414,32 @@ export class SubmissionsService {
   }
 
   private async requireSchema(definitionVersionId: string | null): Promise<FieldSchema> {
+    return (await this.requireDefinition(definitionVersionId)).schema;
+  }
+
+  /**
+   * Load the pinned definition version's schema and its business rules — the
+   * exact structure + rules in force when the submission was created, so history
+   * stays interpretable under its own version.
+   */
+  private async requireDefinition(
+    definitionVersionId: string | null,
+  ): Promise<{ schema: FieldSchema; rules: EvaluableRule[] }> {
     if (!definitionVersionId) {
       throw new ConflictException('This submission is not pinned to a definition version');
     }
     const version = await this.prisma.reportDefinitionVersion.findUnique({
       where: { id: definitionVersionId },
-      select: { fieldSchema: true },
+      select: { fieldSchema: true, rules: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] } },
     });
     const schema = this.schemaFromVersion(version?.fieldSchema);
     if (!schema) throw new ConflictException('The pinned definition version has no usable schema');
-    return schema;
+    return { schema, rules: (version?.rules ?? []).map(toEvaluableRule) };
   }
 
   /** Narrows a jsonb field schema to a usable FieldSchema, or null if unusable. */
   private schemaFromVersion(fieldSchema: Prisma.JsonValue | null | undefined): FieldSchema | null {
-    if (!fieldSchema || typeof fieldSchema !== 'object' || Array.isArray(fieldSchema)) return null;
-    const layout = (fieldSchema as { layout?: unknown }).layout;
-    if (layout !== 'simple' && layout !== 'matrix') return null;
-    return fieldSchema as unknown as FieldSchema;
+    return coerceFieldSchema(fieldSchema);
   }
 }
 

@@ -10,9 +10,11 @@ import {
   ReportDefinitionStatus,
   SchemaSource,
   validateFieldSchema,
+  validateRules,
 } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
 import { CreateDefinitionVersionDto, UpdateSchemaDto } from './dto';
 
 /**
@@ -132,6 +134,7 @@ export class DefinitionVersionsService {
       throw new ConflictException('Only a DRAFT version can be published');
     }
     this.assertValidSchema(version.fieldSchema);
+    await this.assertValidRules(versionId, version.fieldSchema);
 
     // Archive the current active version and publish this one atomically so a
     // report type never has two active published versions.
@@ -164,6 +167,28 @@ export class DefinitionVersionsService {
     if (!result.ok) {
       throw new BadRequestException({
         message: 'Invalid field schema',
+        errors: result.errors,
+      });
+    }
+  }
+
+  /**
+   * Publishing freezes the rules, so the whole set must be sound first: valid
+   * field refs/operators and — crucially — no dependency cycles (§6.8). This is
+   * the last line of defence; cycles are rejected here, never at submit time.
+   */
+  private async assertValidRules(versionId: string, fieldSchema: unknown): Promise<void> {
+    const schema = coerceFieldSchema(fieldSchema as never);
+    if (!schema) return; // schema validity already asserted separately
+    const rows = await this.prisma.businessRule.findMany({
+      where: { definitionVersionId: versionId },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    if (rows.length === 0) return;
+    const result = validateRules(schema, rows.map(toEvaluableRule));
+    if (!result.ok) {
+      throw new BadRequestException({
+        message: 'Cannot publish: the attached business rules are invalid',
         errors: result.errors,
       });
     }

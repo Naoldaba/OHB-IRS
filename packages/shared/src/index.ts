@@ -7,5 +7,6 @@ export * from './reports/validate-field-schema';
 export * from './reports/validate-submission';
 export * from './reports/render-model';
 export * from './reports/workflow';
+export * from './reports/rules';
 export * from './reports/registry';
 export * from './reports/definitions/hiv-viral-load';
