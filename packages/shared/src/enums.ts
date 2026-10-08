@@ -75,6 +75,23 @@ export enum RuleTemplateScope {
   CATEGORY = 'CATEGORY',
 }
 
+/**
+ * In-app notification events (Phase 9). Each notification is addressed to a
+ * single recipient. Delivery is in-app only for now; email is a later channel.
+ * Keep the string values stable — they are persisted in the database.
+ */
+export enum NotificationType {
+  // → Bureau admins, when a laboratory sends a report in.
+  REPORT_SUBMITTED = 'REPORT_SUBMITTED',
+  REPORT_RESUBMITTED = 'REPORT_RESUBMITTED',
+  // → the owning laboratory, as a review progresses.
+  REPORT_UNDER_REVIEW = 'REPORT_UNDER_REVIEW',
+  REVISION_REQUIRED = 'REVISION_REQUIRED',
+  REPORT_APPROVED = 'REPORT_APPROVED',
+  // → the other party in a feedback thread.
+  FEEDBACK_RECEIVED = 'FEEDBACK_RECEIVED',
+}
+
 /** High-level audit action catalogue. Extend as features are added. */
 export enum AuditAction {
   LOGIN = 'LOGIN',

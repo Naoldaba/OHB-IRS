@@ -186,6 +186,123 @@ h4 {
   letter-spacing: 0.06em;
 }
 
+/* Notifications: bell trigger + dropdown panel */
+.notif {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.notif__trigger {
+  position: relative;
+}
+.notif__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--status-red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+.notif__panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  z-index: 50;
+  overflow: hidden;
+}
+.notif__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notif__title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.notif__markall {
+  background: none;
+  border: none;
+  color: var(--primary-accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.notif__markall:hover {
+  text-decoration: underline;
+}
+.notif__list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.notif__empty {
+  margin: 0;
+  padding: 28px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.notif__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.notif__item:last-child {
+  border-bottom: none;
+}
+.notif__item:hover {
+  background: var(--surface-muted);
+}
+.notif__item--unread {
+  background: rgba(28, 122, 84, 0.05);
+}
+.notif__item-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.notif__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary-accent);
+  flex: none;
+}
+.notif__item-body {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.notif__item-time {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;

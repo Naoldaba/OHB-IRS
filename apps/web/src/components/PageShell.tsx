@@ -12,6 +12,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Activity, LogOut, ShieldCheck } from 'lucide-react';
 import { RoleName } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
+import { NotificationBell } from './NotificationBell';
 import type { ReactNode } from 'react';
 
 const ADMIN_NAV = [
@@ -85,6 +86,8 @@ export function PageShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="app-header__spacer" />
+
+          <NotificationBell />
 
           <div className="user-chip">
             <span>

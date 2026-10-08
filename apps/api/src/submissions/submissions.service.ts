@@ -26,6 +26,7 @@ import {
 } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../common/auth-user';
 import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
 import {
@@ -54,6 +55,7 @@ export class SubmissionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ---- Queries --------------------------------------------------------------
@@ -227,7 +229,9 @@ export class SubmissionsService {
 
   async startReview(id: string, user: AuthUser) {
     const submission = await this.load(id);
-    return this.transition(submission, 'startReview', user);
+    const updated = await this.transition(submission, 'startReview', user);
+    await this.notifications.notifyReviewStarted(updated, user);
+    return updated;
   }
 
   async requestRevision(id: string, user: AuthUser, dto: RequestRevisionDto) {
@@ -243,14 +247,18 @@ export class SubmissionsService {
         fieldKey: dto.fieldKey,
       },
     });
-    return this.transition(submission, 'requestRevision', user, {
+    const updated = await this.transition(submission, 'requestRevision', user, {
       metadata: { message: dto.message },
     });
+    await this.notifications.notifyRevisionRequired(updated, user, dto.message);
+    return updated;
   }
 
   async approve(id: string, user: AuthUser) {
     const submission = await this.load(id);
-    return this.transition(submission, 'approve', user);
+    const updated = await this.transition(submission, 'approve', user);
+    await this.notifications.notifyApproved(updated, user);
+    return updated;
   }
 
   // ---- Feedback -------------------------------------------------------------
@@ -306,6 +314,18 @@ export class SubmissionsService {
       entityId: submission.id,
       metadata: { feedbackId: feedback.id, type: feedback.type, parentId: dto.parentId ?? null },
     });
+    // Notify the other party in the thread (admin → lab, or lab → admins).
+    const enriched = await this.prisma.reportSubmission.findUnique({
+      where: { id: submission.id },
+      select: {
+        id: true,
+        laboratoryId: true,
+        reportType: { select: { name: true } },
+        laboratory: { select: { name: true } },
+        reportingPeriod: { select: { label: true } },
+      },
+    });
+    await this.notifications.notifyFeedback(enriched ?? submission, user);
     return feedback;
   }
 
@@ -365,10 +385,13 @@ export class SubmissionsService {
     }
 
     // 3) Persist the rule-computed values and the FLAG outcomes snapshot.
-    return this.transition(submission, action, user, {
+    const updated = await this.transition(submission, action, user, {
       normalizedData: evaluation.values,
       flags: evaluation.flags,
     });
+    // Notify the Bureau that a report has arrived (best-effort; see service).
+    await this.notifications.notifySubmitted(updated, user, action === 'resubmit');
+    return updated;
   }
 
   /**

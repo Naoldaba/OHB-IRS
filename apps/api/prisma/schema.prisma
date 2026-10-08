@@ -57,6 +57,8 @@ model User {
   auditLogs            AuditLog[]           @relation("auditActor")
   createdDefinitionVersions   ReportDefinitionVersion[] @relation("defVersionCreatedBy")
   publishedDefinitionVersions ReportDefinitionVersion[] @relation("defVersionPublishedBy")
+  notifications          Notification[] @relation("notificationRecipient")
+  triggeredNotifications Notification[] @relation("notificationActor")
 
   @@index([roleId])
   @@index([laboratoryId])
@@ -158,9 +160,10 @@ model ReportSubmission {
   submittedAt DateTime?
   reviewedAt  DateTime?
 
-  versions    SubmissionVersion[]
-  feedback    Feedback[]
-  attachments Attachment[]
+  versions      SubmissionVersion[]
+  feedback      Feedback[]
+  attachments   Attachment[]
+  notifications Notification[]
 
   // One submission per report type, per lab, per period.
   @@unique([reportTypeId, laboratoryId, reportingPeriodId])
@@ -308,4 +311,28 @@ model AuditLog {
 
   @@index([actorId])
   @@index([entityType, entityId])
+}
+
+/// An in-app notification addressed to a single recipient (Phase 9). Created as
+/// a side effect of workflow/feedback events; never overwrites history. Email
+/// and other channels can be layered on later without changing this record.
+model Notification {
+  id          String   @id @default(cuid())
+  recipientId String
+  recipient   User     @relation("notificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  type        String // NotificationType enum value
+  title       String
+  body        String
+  // Optional deep link to the submission the event concerns.
+  submissionId String?
+  submission   ReportSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  // Who triggered the event (nullable so a deleted actor doesn't drop the notice).
+  actorId     String?
+  actor       User?    @relation("notificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  // Null while unread; set to the time the recipient marked it read.
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId, readAt])
+  @@index([submissionId])
 }

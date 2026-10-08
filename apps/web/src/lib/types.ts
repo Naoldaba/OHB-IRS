@@ -8,6 +8,7 @@ import type {
   Diagnostic,
   FeedbackType,
   FieldSchema,
+  NotificationType,
   PeriodType,
   RenderModel,
   ReportDefinitionStatus,
@@ -203,6 +204,20 @@ export interface DashboardAnalytics {
   overview: OverviewAnalytics;
   laboratories: LabComplianceRow[];
   trends: TrendPoint[];
+}
+
+// ---- Notifications (Phase 9) ------------------------------------------------
+
+/** An in-app notification addressed to the current user. */
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  submissionId: string | null;
+  readAt: string | null;
+  createdAt: string;
+  actor?: { id: string; fullName: string } | null;
 }
 
 /** A persisted business rule, as returned by the rules API (jsonb AST included). */
