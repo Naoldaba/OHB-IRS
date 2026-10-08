@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { FileText, ClipboardList, CalendarRange, Inbox, ArrowRight } from 'lucide-react';
+import { FileText, BarChart3, CalendarRange, Inbox, ArrowRight } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api } from '@/lib/api';
 import type { ReportType, SubmissionSummary } from '@/lib/types';
@@ -73,10 +73,10 @@ export default function AdminOverview() {
               desc="Review submitted reports, give feedback, request revisions, and approve."
             />
             <ActionCard
-              href="/admin/report-types"
-              icon={<ClipboardList size={20} />}
-              title="HIV Viral Load (acceptance)"
-              desc="Build the HIV Viral Load matrix report end-to-end — no code required."
+              href="/admin/analytics"
+              icon={<BarChart3 size={20} />}
+              title="Compliance dashboard"
+              desc="Track expected-vs-submitted, overdue reports, lab comparison and reporting trends."
             />
           </div>
         </>

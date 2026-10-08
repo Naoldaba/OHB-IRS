@@ -101,7 +101,7 @@ export default function LoginPage() {
           </Field>
 
           <Button type="submit" block disabled={submitting}>
-            {submitting ? 'Signing in…' : 'Sign in'}
+            {submitting ? 'Signing in…' : 'Authenticate and Access Portal'}
             {!submitting && <ArrowRight size={16} />}
           </Button>
         </form>

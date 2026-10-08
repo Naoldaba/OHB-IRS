@@ -700,6 +700,195 @@ h4 {
   margin-bottom: 20px;
 }
 
+/* ---- Dashboard / analytics (Phase 8) ---- */
+:root {
+  /* Report-state palette. The four active states are a CVD-checked categorical
+     set (validated with the dataviz skill); "not yet due" is a recessive,
+     intentionally-neutral track. Always paired with a text label, never color
+     alone. */
+  --state-approved: #1c7a54; /* green  — approved */
+  --state-review: #2563eb; /* blue   — submitted / in review */
+  --state-revision: #d97706; /* amber  — revision required */
+  --state-overdue: #b91c1c; /* red    — overdue */
+  --state-pending: #94a3b8; /* slate  — not yet due (neutral track) */
+}
+
+.grid--4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* KPI stat tile */
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+}
+.stat__label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.stat__value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-top: 8px;
+  color: var(--text);
+}
+.stat__sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.stat__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Stacked compliance meter — 2px surface gaps act as secondary encoding */
+.meter {
+  display: flex;
+  gap: 2px;
+  height: 16px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+.meter__seg {
+  height: 100%;
+  min-width: 2px;
+}
+.meter__seg:first-child {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+.meter__seg:last-child {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+
+/* Legend */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 14px;
+}
+.legend__item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.legend__swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.legend__item b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Horizontal comparison bars (single measure: compliance) */
+.barrow {
+  display: grid;
+  grid-template-columns: 150px 1fr 108px;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 0;
+}
+.barrow + .barrow {
+  border-top: 1px solid var(--border);
+}
+.barrow__label {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.barrow__track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--surface-muted);
+}
+.barrow__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--primary);
+  min-width: 2px;
+}
+.barrow__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.barrow__meta b {
+  color: var(--text);
+}
+
+/* Trend — vertical bars, one per period (single measure: compliance) */
+.trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 180px;
+  padding-top: 10px;
+  overflow-x: auto;
+}
+.trend__col {
+  flex: 1 1 0;
+  min-width: 42px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.trend__bar-wrap {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.trend__bar {
+  width: 70%;
+  max-width: 34px;
+  border-radius: 4px 4px 0 0;
+  background: var(--primary);
+  min-height: 2px;
+}
+.trend__val {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.trend__x {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 @media (max-width: 860px) {
   :root {
     --content-max: 100%;
@@ -709,7 +898,18 @@ h4 {
     grid-template-columns: 1fr;
   }
   .grid--2,
-  .grid--3 {
+  .grid--3,
+  .grid--4 {
     grid-template-columns: 1fr;
+  }
+  .barrow {
+    grid-template-columns: 110px 1fr 92px;
+    gap: 10px;
+  }
+}
+
+@media (min-width: 861px) and (max-width: 1200px) {
+  .grid--4 {
+    grid-template-columns: repeat(2, 1fr);
   }
 }

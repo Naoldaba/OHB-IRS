@@ -143,6 +143,51 @@ export interface SaveDraftResponse {
   validation: { ok: boolean; errors: { path: string; message: string }[] };
 }
 
+// ---- Analytics (Phase 8) ----------------------------------------------------
+
+/** Compliance tallies over a set of expected submission slots. */
+export interface ComplianceCounts {
+  expected: number;
+  submitted: number;
+  pendingReview: number;
+  approved: number;
+  revisionRequired: number;
+  overdue: number;
+  pending: number;
+  draft: number;
+  /** submitted / expected, 0..1 (0 when nothing is expected). */
+  complianceRate: number;
+}
+
+export interface OverviewAnalytics extends ComplianceCounts {
+  totalLaboratories: number;
+  totalReportTypes: number;
+  flagged: number;
+}
+
+export interface LabComplianceRow extends ComplianceCounts {
+  laboratoryId: string;
+  laboratoryName: string;
+  laboratoryCode: string;
+}
+
+export interface TrendPoint extends ComplianceCounts {
+  periodId: string;
+  periodLabel: string;
+  year: number;
+  periodNumber: number;
+  reportTypeId: string;
+  reportTypeName: string;
+  dueDate: string;
+}
+
+export interface DashboardAnalytics {
+  generatedAt: string;
+  overview: OverviewAnalytics;
+  laboratories: LabComplianceRow[];
+  trends: TrendPoint[];
+}
+
 /** A persisted business rule, as returned by the rules API (jsonb AST included). */
 export interface BusinessRuleRow {
   id: string;

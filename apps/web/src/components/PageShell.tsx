@@ -16,6 +16,7 @@ import type { ReactNode } from 'react';
 
 const ADMIN_NAV = [
   { href: '/admin', label: 'Overview' },
+  { href: '/admin/analytics', label: 'Dashboard' },
   { href: '/admin/report-types', label: 'Reports' },
   { href: '/admin/periods', label: 'Periods' },
   { href: '/admin/submissions', label: 'Submissions' },

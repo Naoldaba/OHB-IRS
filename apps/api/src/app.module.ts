@@ -12,6 +12,7 @@ import { RulesModule } from './rules/rules.module';
 import { ReportingPeriodsModule } from './reporting-periods/reporting-periods.module';
 import { RequirementsModule } from './requirements/requirements.module';
 import { SubmissionsModule } from './submissions/submissions.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 import { AppController } from './app.controller';
 import { SessionAuthGuard, RolesGuard } from './common/guards';
 
@@ -29,6 +30,7 @@ import { SessionAuthGuard, RolesGuard } from './common/guards';
     ReportingPeriodsModule,
     RequirementsModule,
     SubmissionsModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [
