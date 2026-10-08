@@ -139,6 +139,19 @@ h4 {
   height: 100%;
   object-fit: contain;
 }
+/* Icon badge for overview action cards. Its own class so the brand-logo styling
+   on .brand__mark (white box for the logo image) can't hide these icons. */
+.action-card__icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--surface-muted);
+  color: var(--primary-accent);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
 .brand__text {
   line-height: 1.2;
 }
@@ -738,6 +751,13 @@ h4 {
 .callout--danger .callout__icon {
   color: var(--status-red);
 }
+.callout--success {
+  background: #e7f5ee;
+  border-color: #bfe3d0;
+}
+.callout--success .callout__icon {
+  color: var(--status-green);
+}
 
 /* ---- Tables ---- */
 .table {
@@ -938,6 +958,50 @@ h4 {
 }
 .auth-card .brand {
   margin-bottom: 20px;
+}
+/* Secondary action under the primary auth button ("Can't sign in?" etc.). */
+.auth-aside {
+  margin-top: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.auth-link {
+  color: var(--primary-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.auth-link:hover {
+  text-decoration: underline;
+}
+/* Thin rule separating the form from the footer notice. */
+.auth-divider {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 22px 0 16px;
+}
+.auth-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.auth-footer__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.auth-footer__notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--primary-accent);
+}
+.auth-footer__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 
 /* ---- Dashboard / analytics (Phase 8) ---- */

@@ -111,9 +111,7 @@ function ActionCard({
     <Link href={href} style={{ textDecoration: 'none', color: 'inherit' }}>
       <Card className="action-card">
         <div className="toolbar" style={{ marginBottom: 8 }}>
-          <span className="brand__mark" style={{ width: 38, height: 38 }}>
-            {icon}
-          </span>
+          <span className="action-card__icon">{icon}</span>
           <ArrowRight size={16} className="spacer" style={{ color: 'var(--text-faint)' }} />
         </div>
         <h2 className="card__title" style={{ fontSize: 17 }}>

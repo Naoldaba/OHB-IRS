@@ -62,9 +62,28 @@ model User {
   publishedDefinitionVersions ReportDefinitionVersion[] @relation("defVersionPublishedBy")
   notifications          Notification[] @relation("notificationRecipient")
   triggeredNotifications Notification[] @relation("notificationActor")
+  passwordResetTokens    PasswordResetToken[] @relation("resetTokenUser")
 
   @@index([roleId])
   @@index([laboratoryId])
+}
+
+/// A single-use, time-limited password-reset grant. Only the SHA-256 hash of the
+/// token is stored, never the token itself, so a database read cannot be used to
+/// reset a password. Consumed (usedAt set) on a successful reset; expired/used
+/// rows are harmless and cleaned up opportunistically. Requesting a new reset
+/// invalidates the user's earlier outstanding tokens.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation("resetTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 hex of the opaque token sent in the email link.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model ReportCategory {

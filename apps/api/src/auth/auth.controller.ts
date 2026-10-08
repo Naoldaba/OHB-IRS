@@ -24,7 +24,13 @@ import {
 import { AuthUser } from '../common/auth-user';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, LoginDto, UpdateProfileDto } from './dto';
+import {
+  ChangePasswordDto,
+  ForgotPasswordDto,
+  LoginDto,
+  ResetPasswordDto,
+  UpdateProfileDto,
+} from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -43,6 +49,28 @@ export class AuthController {
     );
     req.session.userId = user.id;
     return user;
+  }
+
+  /**
+   * Begin an email-based password reset. Always returns the same response
+   * whether or not the email matches an account, to avoid revealing which
+   * addresses are registered.
+   */
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(200)
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    await this.auth.requestPasswordReset(dto.email);
+    return { ok: true };
+  }
+
+  /** Complete a password reset using a token from the emailed link. */
+  @Public()
+  @Post('reset-password')
+  @HttpCode(200)
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.auth.resetPassword(dto.token, dto.newPassword);
+    return { ok: true };
   }
 
   @PasswordChangeExempt()

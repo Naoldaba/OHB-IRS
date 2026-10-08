@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AtSign, Lock, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
+import { AtSign, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth, landingFor } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { BrandMark, Button, Callout, Card, Field } from '@/components/ui';
@@ -50,7 +51,7 @@ export default function LoginPage() {
         </div>
 
         <div className="micro-label" style={{ marginBottom: 6 }}>
-          Secure Sign In
+          Secure Portal Authentication
         </div>
         <h1 style={{ fontSize: 22, marginBottom: 4 }}>Laboratory Reporting System</h1>
         <p className="muted text-sm" style={{ marginBottom: 20 }}>
@@ -103,7 +104,31 @@ export default function LoginPage() {
             {!submitting && <ArrowRight size={16} />}
           </Button>
         </form>
+
+        <p className="auth-aside">
+          Can&rsquo;t sign in?{' '}
+          <Link href="/forgot-password" className="auth-link">
+            Reset your password
+          </Link>
+        </p>
+
+        <hr className="auth-divider" />
+
+        <div className="auth-footer">
+          <p className="auth-footer__notice">
+            <ShieldCheck size={13} aria-hidden />
+            <span>
+              Authorized personnel only. This system contains confidential laboratory
+              data and all access is logged.
+            </span>
+          </p>
+          <p className="auth-footer__meta">
+            © {new Date().getFullYear()} Oromia Regional Health Bureau · v{APP_VERSION}
+          </p>
+        </div>
       </Card>
     </div>
   );
 }
+
+const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION ?? '0.1.0';

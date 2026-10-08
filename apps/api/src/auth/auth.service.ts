@@ -2,14 +2,20 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { createHash, randomBytes } from 'crypto';
 import { compare, hash } from 'bcryptjs';
 import { AuditAction } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
 import { STORAGE, StorageProvider } from '../storage/storage.provider';
+import { MailService } from '../mail/mail.service';
+
+/** How long a password-reset link stays valid. */
+const RESET_TOKEN_TTL_MINUTES = 60;
 
 /** Image types accepted for a profile picture, mapped to a file extension. */
 const AVATAR_MIME_EXT: Record<string, string> = {
@@ -21,10 +27,13 @@ const AVATAR_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     @Inject(STORAGE) private readonly storage: StorageProvider,
+    private readonly mail: MailService,
   ) {}
 
   /** Validates credentials and returns the authenticated principal. */
@@ -217,4 +226,92 @@ export class AuthService {
       metadata: { passwordChanged: true },
     });
   }
+
+  /**
+   * Begins the email-based password-reset flow. To avoid revealing which emails
+   * have accounts, this method never signals whether a user was found: it
+   * resolves the same way whether or not an email was sent. When the email does
+   * belong to an active account, any earlier outstanding tokens are invalidated,
+   * a fresh single-use token is stored (hashed) and a reset link is emailed.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    const normalized = email.toLowerCase().trim();
+    const user = await this.prisma.user.findUnique({ where: { email: normalized } });
+
+    // Silent no-op for unknown or deactivated accounts (no enumeration).
+    if (!user || !user.isActive) return;
+
+    // Invalidate earlier outstanding tokens so only the newest link works.
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id, usedAt: null },
+    });
+
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60_000);
+    await this.prisma.passwordResetToken.create({
+      data: { userId: user.id, tokenHash: hashToken(token), expiresAt },
+    });
+
+    await this.audit.record({
+      action: AuditAction.PASSWORD_RESET_REQUESTED,
+      actorId: user.id,
+      entityType: 'User',
+      entityId: user.id,
+    });
+
+    const link = `${this.mail.webBaseUrl}/reset-password?token=${token}`;
+    try {
+      await this.mail.sendPasswordReset(user.email, link, RESET_TOKEN_TTL_MINUTES);
+    } catch (err) {
+      // Never surface send failures to the caller (would leak account existence
+      // and timing); log for operators instead.
+      this.logger.error(`Failed to send password-reset email to ${user.email}`, err as Error);
+    }
+  }
+
+  /**
+   * Completes a reset: validates the token (exists, unused, unexpired), sets the
+   * new password, consumes the token and clears any forced-change flag. A
+   * generic error is returned for any invalid/expired/used token so a caller
+   * cannot distinguish the cases.
+   */
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash: hashToken(token) },
+    });
+
+    if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('This reset link is invalid or has expired.');
+    }
+
+    // Mark used first (single-use), guarding against a concurrent double-submit:
+    // only the request that flips usedAt from null proceeds to set the password.
+    const consumed = await this.prisma.passwordResetToken.updateMany({
+      where: { id: record.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    if (consumed.count === 0) {
+      throw new BadRequestException('This reset link is invalid or has expired.');
+    }
+
+    await this.prisma.user.update({
+      where: { id: record.userId },
+      data: {
+        passwordHash: await hash(newPassword, 10),
+        mustChangePassword: false,
+      },
+    });
+
+    await this.audit.record({
+      action: AuditAction.PASSWORD_RESET_COMPLETED,
+      actorId: record.userId,
+      entityType: 'User',
+      entityId: record.userId,
+    });
+  }
+}
+
+/** SHA-256 hex of a reset token; only the hash is ever persisted. */
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }

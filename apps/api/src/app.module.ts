@@ -15,6 +15,7 @@ import { SubmissionsModule } from './submissions/submissions.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { StorageModule } from './storage/storage.module';
+import { MailModule } from './mail/mail.module';
 import { AppController } from './app.controller';
 import { SessionAuthGuard, RolesGuard } from './common/guards';
 
@@ -35,6 +36,7 @@ import { SessionAuthGuard, RolesGuard } from './common/guards';
     AnalyticsModule,
     NotificationsModule,
     StorageModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [

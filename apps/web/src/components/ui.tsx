@@ -9,7 +9,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
-import { Info, AlertTriangle } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { ReportStatus, ReportDefinitionStatus } from '@ohb/shared';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -202,11 +202,13 @@ export function Callout({
 }: {
   title?: ReactNode;
   children: ReactNode;
-  tone?: 'default' | 'danger';
+  tone?: 'default' | 'danger' | 'success';
 }) {
-  const Icon = tone === 'danger' ? AlertTriangle : Info;
+  const Icon = tone === 'danger' ? AlertTriangle : tone === 'success' ? CheckCircle2 : Info;
+  const toneClass =
+    tone === 'danger' ? 'callout--danger' : tone === 'success' ? 'callout--success' : '';
   return (
-    <div className={['callout', tone === 'danger' ? 'callout--danger' : ''].join(' ')}>
+    <div className={['callout', toneClass].join(' ')}>
       <Icon className="callout__icon" size={18} />
       <div>
         {title && <div className="callout__title">{title}</div>}
