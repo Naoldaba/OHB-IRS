@@ -24,6 +24,8 @@ export interface AuthUser {
   fullName: string;
   role: RoleName;
   laboratoryId: string | null;
+  /** When true, the user must change their password before anything else. */
+  mustChangePassword: boolean;
 }
 
 export interface Laboratory {
@@ -33,6 +35,21 @@ export interface Laboratory {
   zone?: string | null;
   town?: string | null;
   isActive: boolean;
+  /** Present on the admin list endpoint. */
+  _count?: { users: number };
+}
+
+/** A user as returned by the admin `/users` endpoints (never the password hash). */
+export interface User {
+  id: string;
+  email: string;
+  fullName: string;
+  isActive: boolean;
+  lastLoginAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  role: { id: string; name: RoleName };
+  laboratory?: { id: string; name: string; code: string } | null;
 }
 
 export interface ReportCategory {

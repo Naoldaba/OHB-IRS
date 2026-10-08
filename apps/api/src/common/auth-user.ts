@@ -5,4 +5,6 @@ export interface AuthUser {
   fullName: string;
   role: string; // RoleName value
   laboratoryId: string | null;
+  /** When true, the user must change their password before doing anything else. */
+  mustChangePassword: boolean;
 }

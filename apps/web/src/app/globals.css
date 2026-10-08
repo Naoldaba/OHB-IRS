@@ -694,7 +694,8 @@ h4 {
 }
 .auth-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 520px;
+  min-height: 480px;
 }
 .auth-card .brand {
   margin-bottom: 20px;

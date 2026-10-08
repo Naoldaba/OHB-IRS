@@ -41,6 +41,9 @@ model User {
   laboratoryId String?
   laboratory   Laboratory? @relation(fields: [laboratoryId], references: [id])
   isActive     Boolean     @default(true)
+  // Set when an admin creates the account or resets the password; forces a
+  // self-service change at next login before any other action is permitted.
+  mustChangePassword Boolean @default(false)
   lastLoginAt  DateTime?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt

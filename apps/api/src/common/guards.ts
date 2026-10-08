@@ -9,7 +9,11 @@ import { Reflector } from '@nestjs/core';
 import { RoleName } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from './auth-user';
-import { IS_PUBLIC_KEY, ROLES_KEY } from './decorators';
+import {
+  IS_PUBLIC_KEY,
+  PASSWORD_CHANGE_EXEMPT_KEY,
+  ROLES_KEY,
+} from './decorators';
 
 /**
  * Authoritative authentication: resolves the session's userId to a live, active
@@ -50,8 +54,25 @@ export class SessionAuthGuard implements CanActivate {
       fullName: user.fullName,
       role: user.role.name,
       laboratoryId: user.laboratoryId,
+      mustChangePassword: user.mustChangePassword,
     };
     request.user = authUser;
+
+    // A user who still owes a password change may only reach exempt routes
+    // (the change-password endpoint, logout, /auth/me). Everything else is
+    // blocked server-side so the frontend redirect can't be bypassed.
+    if (user.mustChangePassword) {
+      const exempt = this.reflector.getAllAndOverride<boolean>(
+        PASSWORD_CHANGE_EXEMPT_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (!exempt) {
+        throw new ForbiddenException({
+          message: 'You must change your password before continuing',
+          code: 'PASSWORD_CHANGE_REQUIRED',
+        });
+      }
+    }
     return true;
   }
 }

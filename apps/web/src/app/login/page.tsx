@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AtSign, Lock, Activity, ArrowRight } from 'lucide-react';
-import { useAuth, homeFor } from '@/lib/auth';
+import { useAuth, landingFor } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { Button, Callout, Card, Field } from '@/components/ui';
 
@@ -16,7 +16,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!loading && user) router.replace(homeFor(user.role));
+    if (!loading && user) router.replace(landingFor(user));
   }, [loading, user, router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -25,7 +25,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const me = await login(email.trim(), password);
-      router.replace(homeFor(me.role));
+      router.replace(landingFor(me));
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 401

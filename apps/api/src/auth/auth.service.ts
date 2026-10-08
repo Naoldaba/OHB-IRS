@@ -1,5 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { compare } from 'bcryptjs';
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { compare, hash } from 'bcryptjs';
 import { AuditAction } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -36,6 +40,7 @@ export class AuthService {
       fullName: user.fullName,
       role: user.role.name,
       laboratoryId: user.laboratoryId,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 
@@ -51,6 +56,45 @@ export class AuthService {
       fullName: user.fullName,
       role: user.role.name,
       laboratoryId: user.laboratoryId,
+      mustChangePassword: user.mustChangePassword,
     };
+  }
+
+  /**
+   * Self-service password change. Verifies the current password, stores the new
+   * one and clears the mustChangePassword flag. Used both for the forced change
+   * at first login and for voluntary changes.
+   */
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+
+    if (!(await compare(currentPassword, user.passwordHash))) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+    if (await compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await hash(newPassword, 10),
+        mustChangePassword: false,
+      },
+    });
+    await this.audit.record({
+      action: AuditAction.USER_UPDATED,
+      actorId: user.id,
+      entityType: 'User',
+      entityId: user.id,
+      metadata: { passwordChanged: true },
+    });
   }
 }

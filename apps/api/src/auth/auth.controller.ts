@@ -2,17 +2,22 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Post,
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { AuditAction } from '@ohb/shared';
-import { Public, CurrentUser } from '../common/decorators';
+import {
+  Public,
+  CurrentUser,
+  PasswordChangeExempt,
+} from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { AuditService } from '../audit/audit.service';
 import { AuthService } from './auth.service';
-import { LoginDto } from './dto';
+import { ChangePasswordDto, LoginDto } from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -33,6 +38,18 @@ export class AuthController {
     return user;
   }
 
+  @PasswordChangeExempt()
+  @Post('change-password')
+  @HttpCode(200)
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.auth.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return { ok: true };
+  }
+
+  @PasswordChangeExempt()
   @Post('logout')
   async logout(@Req() req: Request, @CurrentUser() user: AuthUser) {
     await this.audit.record({ action: AuditAction.LOGOUT, actorId: user.id });
@@ -42,6 +59,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @PasswordChangeExempt()
   @Get('me')
   me(@CurrentUser() user: AuthUser): AuthUser {
     if (!user) throw new UnauthorizedException();

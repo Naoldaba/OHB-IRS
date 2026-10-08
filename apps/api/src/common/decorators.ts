@@ -14,6 +14,15 @@ export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: RoleName[]) => SetMetadata(ROLES_KEY, roles);
 
+/**
+ * Marks a route as reachable while the user still owes a password change
+ * (e.g. the change-password endpoint itself, logout, and /auth/me). Every other
+ * route is blocked by SessionAuthGuard until mustChangePassword is cleared.
+ */
+export const PASSWORD_CHANGE_EXEMPT_KEY = 'passwordChangeExempt';
+export const PasswordChangeExempt = () =>
+  SetMetadata(PASSWORD_CHANGE_EXEMPT_KEY, true);
+
 /** Injects the authenticated user into a handler parameter. */
 export const CurrentUser = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): AuthUser => {

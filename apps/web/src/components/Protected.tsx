@@ -28,12 +28,14 @@ export function Protected({
     if (loading) return;
     if (!user) {
       router.replace('/login');
+    } else if (user.mustChangePassword) {
+      router.replace('/change-password');
     } else if (role && user.role !== role) {
       router.replace(homeFor(user.role));
     }
   }, [loading, user, role, router]);
 
-  if (loading || !user || (role && user.role !== role)) {
+  if (loading || !user || user.mustChangePassword || (role && user.role !== role)) {
     return (
       <div className="loading-screen">
         <Spinner />

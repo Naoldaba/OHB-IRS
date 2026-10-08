@@ -94,3 +94,8 @@ export function useAuth(): AuthContextValue {
 export function homeFor(role: RoleName | undefined): string {
   return role === RoleName.BUREAU_ADMIN ? '/admin' : '/lab';
 }
+
+/** Where to send a signed-in user: the forced change-password page takes priority. */
+export function landingFor(user: Pick<AuthUser, 'role' | 'mustChangePassword'>): string {
+  return user.mustChangePassword ? '/change-password' : homeFor(user.role);
+}

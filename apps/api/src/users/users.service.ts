@@ -59,6 +59,8 @@ export class UsersService {
           email,
           fullName: dto.fullName.trim(),
           passwordHash: await hash(dto.password, 10),
+          // Admin sets a temporary password; the user must change it at first login.
+          mustChangePassword: true,
           roleId,
           laboratoryId,
         },
@@ -97,7 +99,11 @@ export class UsersService {
     const data: Prisma.UserUpdateInput = {};
     if (dto.fullName !== undefined) data.fullName = dto.fullName.trim();
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
-    if (dto.password !== undefined) data.passwordHash = await hash(dto.password, 10);
+    if (dto.password !== undefined) {
+      // An admin-reset password is temporary — force a change at next login.
+      data.passwordHash = await hash(dto.password, 10);
+      data.mustChangePassword = true;
+    }
 
     // Role and laboratory must stay consistent, so resolve them together against
     // the resulting role.

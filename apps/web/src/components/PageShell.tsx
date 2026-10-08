@@ -20,6 +20,8 @@ const ADMIN_NAV = [
   { href: '/admin/report-types', label: 'Reports' },
   { href: '/admin/periods', label: 'Periods' },
   { href: '/admin/submissions', label: 'Submissions' },
+  { href: '/admin/labs', label: 'Labs' },
+  { href: '/admin/users', label: 'Users' },
 ];
 
 const LAB_NAV = [{ href: '/lab', label: 'My reports' }];
