@@ -1,7 +1,15 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
-import { RoleName } from '@ohb/shared';
+import {
+  PeriodType,
+  ReportDefinitionStatus,
+  RoleName,
+  SchemaSource,
+  ethiopianMonthRange,
+  hivViralLoadDefinition,
+  toFieldSchema,
+} from '@ohb/shared';
 
 const prisma = new PrismaClient();
 
@@ -49,7 +57,7 @@ async function main() {
 
   // Initial Bureau Administrator
   const adminEmail = (process.env.SEED_ADMIN_EMAIL ?? 'admin@ohb.local').toLowerCase();
-  await prisma.user.upsert({
+  const admin = await prisma.user.upsert({
     where: { email: adminEmail },
     update: {},
     create: {
@@ -78,10 +86,86 @@ async function main() {
     });
   }
 
+  // ---- Reference report: HIV Viral Load (Phase 3 verification seed) ---------
+  // Seeds the report type plus a PUBLISHED definition version (schema snapshot
+  // from the code registry) so a lab can create/fill/submit through the full
+  // lifecycle before the admin Report Builder (Phase 4) exists. Phase 4 verifies
+  // the admin can author the same structure through the UI with no code.
+  const category = await prisma.reportCategory.upsert({
+    where: { name: hivViralLoadDefinition.category },
+    update: {},
+    create: { name: hivViralLoadDefinition.category },
+  });
+
+  const reportType = await prisma.reportType.upsert({
+    where: { code: hivViralLoadDefinition.code },
+    update: {},
+    create: {
+      code: hivViralLoadDefinition.code,
+      name: hivViralLoadDefinition.name,
+      categoryId: category.id,
+      defaultFrequency: hivViralLoadDefinition.defaultFrequency,
+    },
+  });
+
+  // A single published v1 definition, pinned by submissions created against it.
+  await prisma.reportDefinitionVersion.upsert({
+    where: { reportTypeId_version: { reportTypeId: reportType.id, version: 1 } },
+    update: {},
+    create: {
+      reportTypeId: reportType.id,
+      version: 1,
+      status: ReportDefinitionStatus.PUBLISHED,
+      schemaSource: SchemaSource.REGISTRY,
+      fieldSchema: toFieldSchema(hivViralLoadDefinition) as object,
+      createdById: admin.id,
+      publishedById: admin.id,
+      publishedAt: new Date(),
+    },
+  });
+
+  // A sample monthly reporting period (Ethiopian year 2017, Meskerem / month 1).
+  const periodYear = 2017;
+  const periodNumber = 1;
+  const range = ethiopianMonthRange(periodYear, periodNumber);
+  await prisma.reportingPeriod.upsert({
+    where: {
+      reportTypeId_year_periodNumber: {
+        reportTypeId: reportType.id,
+        year: periodYear,
+        periodNumber,
+      },
+    },
+    update: {},
+    create: {
+      reportTypeId: reportType.id,
+      periodType: PeriodType.MONTHLY,
+      year: periodYear,
+      periodNumber,
+      label: `Meskerem ${periodYear}`,
+      startDate: range.start,
+      endDate: range.endExclusive,
+      dueDate: range.endExclusive,
+    },
+  });
+
+  // Expectation: every active laboratory submits this report (laboratoryId null).
+  const existingRequirement = await prisma.reportingRequirement.findFirst({
+    where: { reportTypeId: reportType.id, laboratoryId: null },
+  });
+  if (!existingRequirement) {
+    await prisma.reportingRequirement.create({
+      data: { reportTypeId: reportType.id, laboratoryId: null },
+    });
+  }
+
   const labCount = await prisma.laboratory.count();
   const userCount = await prisma.user.count();
+  const reportTypeCount = await prisma.reportType.count();
   // eslint-disable-next-line no-console
-  console.log(`Seed complete: ${labCount} laboratories, ${userCount} users.`);
+  console.log(
+    `Seed complete: ${labCount} laboratories, ${userCount} users, ${reportTypeCount} report type(s).`,
+  );
 }
 
 main()

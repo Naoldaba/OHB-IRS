@@ -32,19 +32,33 @@ export interface RowDef {
   applicableMetrics: string[];
 }
 
-export interface MatrixReportDefinition {
-  kind: 'matrix';
-  /** Stable machine code; also used as the ReportType.schemaKey. */
-  code: string;
-  name: string;
-  category: string;
-  /** Default reporting frequency; the admin may override per requirement. */
-  defaultFrequency: PeriodType;
+/**
+ * The structural core of a matrix report: the grid shape only (columns, metrics,
+ * rows + applicable mask). This is what gets stored in a definition version's
+ * `fieldSchema`; report identity (code/name/category/frequency) lives on the
+ * ReportType, not in the schema.
+ */
+export interface MatrixStructure {
   columnGroups: ColumnGroupDef[];
   metrics: MetricDef[];
   rows: RowDef[];
   /** Optional free-text notes surfaced in the UI. */
   notes?: string[];
+}
+
+/**
+ * A full registry report definition: the structural core plus report identity.
+ * Retained for the seeded/example HIV Viral Load definition; admin-authored
+ * reports store only the structural {@link MatrixStructure} in their schema.
+ */
+export interface MatrixReportDefinition extends MatrixStructure {
+  kind: 'matrix';
+  /** Stable machine code; also used as the ReportType.code. */
+  code: string;
+  name: string;
+  category: string;
+  /** Default reporting frequency; the admin may override per requirement. */
+  defaultFrequency: PeriodType;
 }
 
 /** metricKey -> value (null means "not entered"). */

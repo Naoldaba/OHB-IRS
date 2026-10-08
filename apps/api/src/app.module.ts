@@ -5,11 +5,29 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { LabsModule } from './labs/labs.module';
 import { UsersModule } from './users/users.module';
+import { CategoriesModule } from './categories/categories.module';
+import { ReportTypesModule } from './report-types/report-types.module';
+import { DefinitionVersionsModule } from './definition-versions/definition-versions.module';
+import { ReportingPeriodsModule } from './reporting-periods/reporting-periods.module';
+import { RequirementsModule } from './requirements/requirements.module';
+import { SubmissionsModule } from './submissions/submissions.module';
 import { AppController } from './app.controller';
 import { SessionAuthGuard, RolesGuard } from './common/guards';
 
 @Module({
-  imports: [PrismaModule, AuditModule, AuthModule, LabsModule, UsersModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    AuthModule,
+    LabsModule,
+    UsersModule,
+    CategoriesModule,
+    ReportTypesModule,
+    DefinitionVersionsModule,
+    ReportingPeriodsModule,
+    RequirementsModule,
+    SubmissionsModule,
+  ],
   controllers: [AppController],
   providers: [
     // Order matters: authenticate first, then authorize by role.

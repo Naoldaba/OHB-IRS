@@ -144,3 +144,36 @@ export function ethiopianMonthRange(year: number, month: number): GregorianRange
   endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
   return { start, endExclusive };
 }
+
+/**
+ * Months (1-based, inclusive) covered by each Ethiopian quarter. The Ethiopian
+ * year has 13 months; the short 13th month (Pagume) is folded into Q4. This
+ * folding is a system convention, not a domain rule from any specific report —
+ * monthly periods are the primary path and avoid it entirely.
+ */
+const QUARTER_MONTHS: Record<number, [number, number]> = {
+  1: [1, 3],
+  2: [4, 6],
+  3: [7, 9],
+  4: [10, 13],
+};
+
+/** Gregorian range spanning a set of inclusive Ethiopian months. */
+function spanMonths(year: number, firstMonth: number, lastMonth: number): GregorianRange {
+  return {
+    start: ethiopianMonthRange(year, firstMonth).start,
+    endExclusive: ethiopianMonthRange(year, lastMonth).endExclusive,
+  };
+}
+
+/** Gregorian range for an Ethiopian quarter (1-4). See {@link QUARTER_MONTHS}. */
+export function ethiopianQuarterRange(year: number, quarter: number): GregorianRange {
+  const months = QUARTER_MONTHS[quarter];
+  if (!months) throw new Error(`Quarter must be 1-4 (got ${quarter})`);
+  return spanMonths(year, months[0], months[1]);
+}
+
+/** Gregorian range for a full Ethiopian year (Meskerem 1 through Pagume). */
+export function ethiopianYearRange(year: number): GregorianRange {
+  return spanMonths(year, 1, 13);
+}
