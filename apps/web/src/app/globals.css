@@ -5,6 +5,7 @@
  */
 
 :root {
+  color-scheme: light;
   --bg: #eef1f8;
   --surface: #ffffff;
   --surface-muted: #f3f5fb;
@@ -35,6 +36,75 @@
   --content-gutter: 32px;
 }
 
+/* ---- Dark theme ----
+   The resolved theme is set as data-theme on <html> before paint (see the init
+   script in the root layout). Tokens are overridden with :root[data-theme='dark']
+   (specificity beats any plain :root block regardless of source order); a few
+   components with hard-coded tints get their own dark overrides below. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1620;
+  --surface: #16212e;
+  --surface-muted: #1e2b3a;
+  --primary: #1f8a60;
+  --primary-hover: #26a271;
+  --primary-accent: #4bb98c;
+  --text: #e6ebf2;
+  --text-muted: #9fb0c0;
+  --text-faint: #6f8194;
+  --border: #2a3a4c;
+  --focus-ring: rgba(75, 185, 140, 0.45);
+
+  --status-green: #45b98a;
+  --status-amber: #e0a44a;
+  --status-red: #f0706e;
+  --status-slate: #9fb0c0;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-pop: 0 10px 25px rgba(0, 0, 0, 0.6), 0 4px 10px rgba(0, 0, 0, 0.45);
+
+  /* Dashboard report-state palette — brightened for dark surfaces. */
+  --state-approved: #45b98a;
+  --state-review: #5b8cf5;
+  --state-revision: #e0a44a;
+  --state-overdue: #f0706e;
+  --state-pending: #7c8ea0;
+}
+
+/* Hard-coded light tints, re-tinted for dark. */
+[data-theme='dark'] .btn--secondary:hover:not(:disabled) {
+  background: #26384c;
+}
+[data-theme='dark'] .btn--danger:hover:not(:disabled) {
+  background: rgba(240, 112, 110, 0.14);
+}
+[data-theme='dark'] .notif__item--unread {
+  background: rgba(75, 185, 140, 0.12);
+}
+[data-theme='dark'] .pill--green {
+  background: rgba(69, 185, 138, 0.16);
+  border-color: rgba(69, 185, 138, 0.32);
+}
+[data-theme='dark'] .pill--amber {
+  background: rgba(224, 164, 74, 0.16);
+  border-color: rgba(224, 164, 74, 0.32);
+}
+[data-theme='dark'] .pill--red {
+  background: rgba(240, 112, 110, 0.16);
+  border-color: rgba(240, 112, 110, 0.32);
+}
+[data-theme='dark'] .callout--danger {
+  background: rgba(240, 112, 110, 0.12);
+  border-color: rgba(240, 112, 110, 0.3);
+}
+[data-theme='dark'] .callout--success {
+  background: rgba(69, 185, 138, 0.12);
+  border-color: rgba(69, 185, 138, 0.3);
+}
+[data-theme='dark'] .matrix input.cell-input--error {
+  background: rgba(240, 112, 110, 0.16);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -52,6 +122,21 @@ body {
   font-size: 15px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ---- Theme toggle ---- */
+.theme-toggle svg {
+  display: block;
+}
+.theme-toggle--floating {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 40;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
 }
 
 a {

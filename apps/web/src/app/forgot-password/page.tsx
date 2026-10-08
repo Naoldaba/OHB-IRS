@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AtSign, ArrowRight, ArrowLeft } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { BrandMark, Button, Callout, Card, Field } from '@/components/ui';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -32,6 +33,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <div className="auth-wrap">
+      <ThemeToggle floating />
       <Card className="auth-card">
         <div className="brand">
           <BrandMark size={44} />

@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Lock, ArrowRight, ArrowLeft } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { BrandMark, Button, Callout, Card, Field, Spinner } from '@/components/ui';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 function ResetPasswordForm() {
   const params = useSearchParams();
@@ -149,6 +150,7 @@ function ResetPasswordForm() {
 export default function ResetPasswordPage() {
   return (
     <div className="auth-wrap">
+      <ThemeToggle floating />
       <Suspense
         fallback={
           <div className="loading-screen">

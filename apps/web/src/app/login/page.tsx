@@ -7,6 +7,7 @@ import { AtSign, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth, landingFor } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { BrandMark, Button, Callout, Card, Field } from '@/components/ui';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function LoginPage() {
   const { user, loading, login } = useAuth();
@@ -41,6 +42,7 @@ export default function LoginPage() {
 
   return (
     <div className="auth-wrap">
+      <ThemeToggle floating />
       <Card className="auth-card">
         <div className="brand">
           <BrandMark size={44} />

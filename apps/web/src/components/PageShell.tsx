@@ -13,6 +13,7 @@ import { LogOut, ShieldCheck } from 'lucide-react';
 import { RoleName } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { NotificationBell } from './NotificationBell';
+import { ThemeToggle } from './ThemeToggle';
 import { Avatar, BrandMark } from './ui';
 import type { ReactNode } from 'react';
 
@@ -86,6 +87,7 @@ export function PageShell({ children }: { children: ReactNode }) {
 
           <div className="app-header__spacer" />
 
+          <ThemeToggle />
           <NotificationBell />
 
           <div className="user-chip">
