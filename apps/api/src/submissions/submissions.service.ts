@@ -30,6 +30,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../common/auth-user';
 import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
 import {
+  ExportService,
+  type ExportFormat,
+  type RenderedExport,
+} from '../export/export.service';
+import type { ExportMetaRow } from '../export/export-model';
+import {
   AddFeedbackDto,
   CreateSubmissionDto,
   ListSubmissionsQueryDto,
@@ -56,6 +62,7 @@ export class SubmissionsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly exporter: ExportService,
   ) {}
 
   // ---- Queries --------------------------------------------------------------
@@ -117,6 +124,111 @@ export class SubmissionsService {
       schema,
       renderModel: schema ? buildRenderModel(schema) : null,
     };
+  }
+
+  /**
+   * Render a submission as a downloadable document (Excel / DOCX / PDF). Reads
+   * the same pinned schema + render model the UI uses, so the export reflects
+   * exactly what is stored. Access is scoped like any other read (admins any
+   * lab; a lab head only its own). An optional `versionNumber` exports an
+   * immutable historical snapshot instead of the current data. Audited.
+   */
+  async exportSubmission(
+    id: string,
+    user: AuthUser,
+    format: ExportFormat,
+    versionNumber?: number,
+  ): Promise<RenderedExport> {
+    const submission = await this.prisma.reportSubmission.findUnique({
+      where: { id },
+      include: {
+        reportType: { select: { name: true, code: true } },
+        laboratory: { select: { name: true, code: true } },
+        reportingPeriod: { select: { label: true } },
+        definitionVersion: { select: { version: true, fieldSchema: true } },
+        submittedBy: { select: { fullName: true } },
+        reviewedBy: { select: { fullName: true } },
+      },
+    });
+    if (!submission) throw new NotFoundException('Submission not found');
+    this.assertAccess(submission, user);
+
+    const schema = this.schemaFromVersion(submission.definitionVersion?.fieldSchema);
+    if (!schema) throw new ConflictException('This submission has no usable schema to export');
+    const renderModel = buildRenderModel(schema);
+
+    // Resolve the data to export: a pinned historical snapshot, or current data.
+    let data = submission.data as Record<string, unknown>;
+    let versionNote: string | undefined;
+    if (versionNumber !== undefined) {
+      const snapshot = await this.prisma.submissionVersion.findUnique({
+        where: { submissionId_versionNumber: { submissionId: id, versionNumber } },
+      });
+      if (!snapshot) throw new NotFoundException(`Version ${versionNumber} not found for this submission`);
+      data = snapshot.data as Record<string, unknown>;
+      versionNote = `v${versionNumber} snapshot (${snapshot.status})`;
+    }
+
+    const meta: ExportMetaRow[] = [
+      { label: 'Laboratory', value: labelWithCode(submission.laboratory?.name, submission.laboratory?.code) },
+      { label: 'Report type', value: labelWithCode(submission.reportType?.name, submission.reportType?.code) },
+      { label: 'Reporting period', value: submission.reportingPeriod?.label ?? '—' },
+      { label: 'Status', value: formatEnum(submission.status) },
+    ];
+    if (submission.definitionVersion) {
+      meta.push({ label: 'Definition version', value: `v${submission.definitionVersion.version}` });
+    }
+    if (versionNote) meta.push({ label: 'Export source', value: versionNote });
+    if (submission.submittedAt) {
+      meta.push({
+        label: 'Submitted',
+        value: `${formatDateTime(submission.submittedAt)}${
+          submission.submittedBy ? ` by ${submission.submittedBy.fullName}` : ''
+        }`,
+      });
+    }
+    if (submission.reviewedAt) {
+      meta.push({
+        label: 'Reviewed',
+        value: `${formatDateTime(submission.reviewedAt)}${
+          submission.reviewedBy ? ` by ${submission.reviewedBy.fullName}` : ''
+        }`,
+      });
+    }
+
+    const flags = Array.isArray(submission.flags)
+      ? (submission.flags as unknown as Diagnostic[])
+      : [];
+
+    const baseName = [
+      submission.reportType?.code || submission.reportType?.name || 'report',
+      submission.laboratory?.code || submission.laboratory?.name,
+      submission.reportingPeriod?.label,
+      versionNumber !== undefined ? `v${versionNumber}` : undefined,
+    ]
+      .filter(Boolean)
+      .join('_');
+
+    const rendered = await this.exporter.render(format, baseName, {
+      title: submission.reportType?.name ?? 'Report',
+      subtitle: [submission.laboratory?.name, submission.reportingPeriod?.label]
+        .filter(Boolean)
+        .join(' · '),
+      meta,
+      renderModel,
+      data,
+      flags,
+      generatedBy: user.fullName,
+    });
+
+    await this.audit.record({
+      action: AuditAction.REPORT_EXPORTED,
+      actorId: user.id,
+      entityType: 'ReportSubmission',
+      entityId: id,
+      metadata: { format, versionNumber: versionNumber ?? null },
+    });
+    return rendered;
   }
 
   // ---- Lab: create & edit ---------------------------------------------------
@@ -518,6 +630,27 @@ export class SubmissionsService {
   private schemaFromVersion(fieldSchema: Prisma.JsonValue | null | undefined): FieldSchema | null {
     return coerceFieldSchema(fieldSchema);
   }
+}
+
+function labelWithCode(name?: string | null, code?: string | null): string {
+  if (!name) return code ?? '—';
+  return code ? `${name} (${code})` : name;
+}
+
+function formatEnum(value: string): string {
+  return value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, ' ');
+}
+
+/** Human-readable timestamp in the bureau's timezone (Africa/Addis Ababa). */
+function formatDateTime(date: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Africa/Addis_Ababa',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 const AUDIT_FOR_ACTION: Record<WorkflowAction, AuditAction> = {

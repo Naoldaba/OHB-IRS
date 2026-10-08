@@ -1,14 +1,25 @@
 import 'dotenv/config';
+import { mkdirSync } from 'fs';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
 import { AppModule } from './app.module';
+import { loadStorageConfig } from './storage/storage.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
+
+  // Serve locally-stored uploads (dev/self-hosted). In production a cloud
+  // storage driver returns its own URLs and this mount is simply unused.
+  const storage = loadStorageConfig();
+  if (storage.driver === 'local') {
+    mkdirSync(storage.localRootDir, { recursive: true });
+    app.useStaticAssets(storage.localRootDir, { prefix: storage.urlPrefix });
+  }
 
   app.enableCors({
     origin: process.env.WEB_ORIGIN?.split(',') ?? ['http://localhost:3000'],

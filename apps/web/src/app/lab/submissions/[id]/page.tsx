@@ -10,6 +10,7 @@ import { Button, Callout, Card, Spinner, StatusPill } from '@/components/ui';
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
+import { ExportMenu } from '@/components/report/ExportMenu';
 
 function toErrorMap(errors: { path: string; message: string }[]): Record<string, string> {
   const map: Record<string, string> = {};
@@ -160,7 +161,15 @@ export default function LabSubmissionPage() {
       )}
 
       <div className="split" style={{ gridTemplateColumns: '1fr 340px' }}>
-        <Card title={editable ? 'Fill in the report' : 'Report data'}>
+        <Card
+          title={editable ? 'Fill in the report' : 'Report data'}
+          desc={editable ? 'Export reflects the last saved draft — save before exporting to include recent edits.' : undefined}
+          actions={
+            detail.renderModel ? (
+              <ExportMenu submissionId={id} onError={(m) => setActionError(m || null)} />
+            ) : undefined
+          }
+        >
           {detail.renderModel ? (
             <ReportRenderer
               model={detail.renderModel}

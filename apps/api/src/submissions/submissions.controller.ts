@@ -6,7 +6,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { RoleName } from '@ohb/shared';
 import { Roles, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
@@ -14,6 +17,7 @@ import { SubmissionsService } from './submissions.service';
 import {
   AddFeedbackDto,
   CreateSubmissionDto,
+  ExportSubmissionQueryDto,
   ListSubmissionsQueryDto,
   RequestRevisionDto,
   UpdateSubmissionDataDto,
@@ -46,6 +50,31 @@ export class SubmissionsController {
   @Get(':id/versions')
   versions(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.submissions.listVersions(id, user);
+  }
+
+  /**
+   * Download the submission as Excel / DOCX / PDF. Scoped like any other read
+   * (admins any lab; a lab head only its own) by the service.
+   */
+  @Get(':id/export')
+  async export(
+    @Param('id') id: string,
+    @Query() query: ExportSubmissionQueryDto,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, contentType, filename } = await this.submissions.exportSubmission(
+      id,
+      user,
+      query.format,
+      query.version,
+    );
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': String(buffer.length),
+    });
+    return new StreamableFile(buffer);
   }
 
   // ---- Lab authoring --------------------------------------------------------

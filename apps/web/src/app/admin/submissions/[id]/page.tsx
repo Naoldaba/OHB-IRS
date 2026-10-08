@@ -10,6 +10,7 @@ import { Button, Callout, Card, Field, Pill, Select, Spinner, StatusPill, Textar
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
+import { ExportMenu } from '@/components/report/ExportMenu';
 import { anchorOptions } from '@/components/report/anchors';
 
 export default function AdminSubmissionDetail() {
@@ -108,7 +109,14 @@ export default function AdminSubmissionDetail() {
 
       <div className="split" style={{ gridTemplateColumns: '1fr 360px' }}>
         <div className="stack" style={{ gap: 20 }}>
-          <Card title="Report data">
+          <Card
+            title="Report data"
+            actions={
+              detail.renderModel ? (
+                <ExportMenu submissionId={id} onError={(m) => setError(m || null)} />
+              ) : undefined
+            }
+          >
             {detail.renderModel ? (
               <ReportRenderer model={detail.renderModel} data={detail.data} mode="read" />
             ) : (

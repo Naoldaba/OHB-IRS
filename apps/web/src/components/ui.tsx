@@ -219,3 +219,42 @@ export function Callout({
 export function Spinner() {
   return <div className="spinner" aria-label="Loading" />;
 }
+
+/** Derives up-to-two uppercase initials from a display name. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/**
+ * Circular profile picture. Shows the image when `src` is set, otherwise a
+ * tinted monogram of the user's initials. `size` is the diameter in pixels.
+ */
+export function Avatar({
+  name,
+  src,
+  size = 40,
+}: {
+  name: string;
+  src?: string | null;
+  size?: number;
+}) {
+  return (
+    <span
+      className="avatar"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
+      aria-hidden={false}
+      role="img"
+      aria-label={`${name} profile picture`}
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt="" width={size} height={size} />
+      ) : (
+        <span className="avatar__initials">{initialsOf(name)}</span>
+      )}
+    </span>
+  );
+}

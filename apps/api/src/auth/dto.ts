@@ -19,3 +19,10 @@ export class ChangePasswordDto {
   @MaxLength(100)
   newPassword: string;
 }
+
+export class UpdateProfileDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  fullName: string;
+}

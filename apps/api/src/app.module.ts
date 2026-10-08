@@ -14,6 +14,7 @@ import { RequirementsModule } from './requirements/requirements.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { StorageModule } from './storage/storage.module';
 import { AppController } from './app.controller';
 import { SessionAuthGuard, RolesGuard } from './common/guards';
 
@@ -33,6 +34,7 @@ import { SessionAuthGuard, RolesGuard } from './common/guards';
     SubmissionsModule,
     AnalyticsModule,
     NotificationsModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [

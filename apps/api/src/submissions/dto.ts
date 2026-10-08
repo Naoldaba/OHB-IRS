@@ -1,13 +1,18 @@
 import {
   IsBooleanString,
   IsEnum,
+  IsIn,
+  IsInt,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { FeedbackType, ReportStatus } from '@ohb/shared';
+import { EXPORT_FORMATS, type ExportFormat } from '../export/export.service';
 
 export class CreateSubmissionDto {
   @IsString()
@@ -80,4 +85,17 @@ export class ListSubmissionsQueryDto {
   @IsOptional()
   @IsBooleanString()
   flagged?: string;
+}
+
+/** Query for `GET /submissions/:id/export`. */
+export class ExportSubmissionQueryDto {
+  @IsIn(EXPORT_FORMATS)
+  format: ExportFormat;
+
+  /** Export an immutable historical version snapshot instead of current data. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version?: number;
 }

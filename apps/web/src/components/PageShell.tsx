@@ -13,6 +13,7 @@ import { Activity, LogOut, ShieldCheck } from 'lucide-react';
 import { RoleName } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { NotificationBell } from './NotificationBell';
+import { Avatar } from './ui';
 import type { ReactNode } from 'react';
 
 const ADMIN_NAV = [
@@ -90,13 +91,20 @@ export function PageShell({ children }: { children: ReactNode }) {
           <NotificationBell />
 
           <div className="user-chip">
-            <span>
-              <span className="user-chip__name">{user?.fullName}</span>
-              <br />
-              <span className="user-chip__role">
-                {user?.role === RoleName.BUREAU_ADMIN ? 'Bureau Admin' : 'Lab Head'}
+            <Link
+              href="/profile"
+              className={`user-chip__link${pathname.startsWith('/profile') ? ' active' : ''}`}
+              title="Your profile"
+            >
+              <Avatar name={user?.fullName ?? ''} src={user?.avatarUrl} size={34} />
+              <span className="user-chip__text">
+                <span className="user-chip__name">{user?.fullName}</span>
+                <br />
+                <span className="user-chip__role">
+                  {user?.role === RoleName.BUREAU_ADMIN ? 'Bureau Admin' : 'Lab Head'}
+                </span>
               </span>
-            </span>
+            </Link>
             <button
               className="btn btn--ghost btn--sm"
               onClick={handleLogout}

@@ -25,6 +25,8 @@ export interface AuthUser {
   fullName: string;
   role: RoleName;
   laboratoryId: string | null;
+  /** Public URL of the user's profile picture, or null when none is set. */
+  avatarUrl: string | null;
   /** When true, the user must change their password before anything else. */
   mustChangePassword: boolean;
 }
@@ -45,6 +47,7 @@ export interface User {
   id: string;
   email: string;
   fullName: string;
+  avatarUrl?: string | null;
   isActive: boolean;
   lastLoginAt?: string | null;
   createdAt: string;
