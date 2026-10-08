@@ -33,7 +33,7 @@ function labCode(name: string): string {
 async function main() {
   // Roles
   const roles = [
-    { name: RoleName.BUREAU_ADMIN, description: 'Oromia Regional Health Bureau administrator' },
+    { name: RoleName.BUREAU_ADMIN, description: 'Oromia Health Bureau administrator' },
     { name: RoleName.REGIONAL_LAB_HEAD, description: 'Regional laboratory head' },
   ];
   for (const r of roles) {

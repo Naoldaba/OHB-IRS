@@ -2,20 +2,25 @@
   "name": "ohb-integrated-report-system",
   "version": "0.1.0",
   "private": true,
-  "description": "Centralized reporting and monitoring system for the Oromia Regional Health Bureau",
+  "description": "Centralized reporting and monitoring system for the Oromia Health Bureau",
   "workspaces": [
     "packages/*",
     "apps/*"
   ],
   "scripts": {
     "db:up": "docker compose up -d",
+    "db:up:wait": "docker compose up -d --wait",
     "db:down": "docker compose down",
     "build:shared": "npm run build --workspace @ohb/shared",
+    "dev": "npm run db:up:wait && concurrently -k -n api,web -c green,cyan \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "npm run start:dev --workspace @ohb/api",
     "dev:web": "npm run dev --workspace @ohb/web",
     "prisma:migrate": "npm run prisma:migrate --workspace @ohb/api",
     "prisma:seed": "npm run prisma:seed --workspace @ohb/api",
     "build": "npm run build:shared && npm run build --workspace @ohb/api && npm run build --workspace @ohb/web"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.0"
   },
   "engines": {
     "node": ">=20"
