@@ -25,6 +25,7 @@ const ADMIN_NAV = [
   { href: '/admin/submissions', label: 'Submissions' },
   { href: '/admin/labs', label: 'Labs' },
   { href: '/admin/users', label: 'Users' },
+  { href: '/admin/audit', label: 'Audit' },
 ];
 
 const LAB_NAV = [{ href: '/lab', label: 'My reports' }];

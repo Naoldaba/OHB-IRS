@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { FileText, BarChart3, CalendarRange, Inbox, ArrowRight } from 'lucide-react';
+import { FileText, BarChart3, CalendarRange, Inbox, ScrollText, ArrowRight } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api } from '@/lib/api';
 import type { ReportType, SubmissionSummary } from '@/lib/types';
@@ -77,6 +77,12 @@ export default function AdminOverview() {
               icon={<BarChart3 size={20} />}
               title="Compliance dashboard"
               desc="Track expected-vs-submitted, overdue reports, lab comparison and reporting trends."
+            />
+            <ActionCard
+              href="/admin/audit"
+              icon={<ScrollText size={20} />}
+              title="Audit trail"
+              desc="Review the immutable record of security-sensitive and reporting-workflow actions."
             />
           </div>
         </>

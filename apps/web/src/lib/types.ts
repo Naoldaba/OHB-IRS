@@ -5,6 +5,7 @@
  */
 
 import type {
+  AuditAction,
   Diagnostic,
   FeedbackType,
   FieldSchema,
@@ -221,6 +222,20 @@ export interface Notification {
   readAt: string | null;
   createdAt: string;
   actor?: { id: string; fullName: string } | null;
+}
+
+// ---- Audit log --------------------------------------------------------------
+
+/** One immutable audit-trail entry, as returned by the admin `/audit-logs` endpoint. */
+export interface AuditLogRow {
+  id: string;
+  action: AuditAction;
+  actorId: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  actor?: { id: string; fullName: string; email: string } | null;
 }
 
 /** A persisted business rule, as returned by the rules API (jsonb AST included). */
