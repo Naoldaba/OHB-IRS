@@ -11,6 +11,8 @@ import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
 import { ExportMenu } from '@/components/report/ExportMenu';
+import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
+import { sectionOptions } from '@/components/report/anchors';
 
 function toErrorMap(errors: { path: string; message: string }[]): Record<string, string> {
   const map: Record<string, string> = {};
@@ -192,6 +194,23 @@ export default function LabSubmissionPage() {
             model={detail.renderModel}
             onReply={reply}
             busy={busy}
+          />
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Card
+          title="Supporting documents"
+          desc={
+            editable
+              ? 'Attach files that support this report. They can be added or removed while the report is editable.'
+              : 'Files attached to this report.'
+          }
+        >
+          <AttachmentsPanel
+            submissionId={id}
+            canManage={editable}
+            sections={sectionOptions(detail.renderModel)}
           />
         </Card>
       </div>

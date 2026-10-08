@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -29,6 +30,7 @@ import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuthUser } from '../common/auth-user';
 import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
+import { STORAGE, StorageProvider } from '../storage/storage.provider';
 import {
   ExportService,
   type ExportFormat,
@@ -41,7 +43,37 @@ import {
   ListSubmissionsQueryDto,
   RequestRevisionDto,
   UpdateSubmissionDataDto,
+  UploadAttachmentDto,
 } from './dto';
+
+/** Supporting-document types accepted as attachments, mapped to a file extension. */
+const ATTACHMENT_MIME_EXT: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'application/vnd.ms-excel': 'xls',
+  'text/csv': 'csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/msword': 'doc',
+  'text/plain': 'txt',
+};
+
+/** Hard cap on a single attachment. Mirror this in the upload interceptor limit. */
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
+const ATTACHMENT_SELECT = {
+  id: true,
+  submissionId: true,
+  sectionKey: true,
+  fileName: true,
+  mimeType: true,
+  size: true,
+  createdAt: true,
+  uploadedBy: { select: { id: true, fullName: true } },
+} satisfies Prisma.AttachmentSelect;
 
 const LIST_INCLUDE = {
   reportType: { select: { id: true, name: true, code: true } },
@@ -63,6 +95,7 @@ export class SubmissionsService {
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
     private readonly exporter: ExportService,
+    @Inject(STORAGE) private readonly storage: StorageProvider,
   ) {}
 
   // ---- Queries --------------------------------------------------------------
@@ -469,6 +502,136 @@ export class SubmissionsService {
     });
   }
 
+  // ---- Attachments ----------------------------------------------------------
+
+  /** Supporting documents on a submission. Scoped like any other read. */
+  async listAttachments(id: string, user: AuthUser) {
+    const submission = await this.load(id);
+    this.assertAccess(submission, user);
+    return this.prisma.attachment.findMany({
+      where: { submissionId: id },
+      orderBy: { createdAt: 'asc' },
+      select: ATTACHMENT_SELECT,
+    });
+  }
+
+  /**
+   * Attach a supporting document. The owning laboratory only, and only while the
+   * report is editable (DRAFT / REVISION_REQUIRED) — attachments are part of the
+   * submission's content, so they are frozen once it is submitted or reviewed.
+   */
+  async addAttachment(
+    id: string,
+    user: AuthUser,
+    file: { buffer: Buffer; mimetype: string; size: number; originalname: string } | undefined,
+    dto: UploadAttachmentDto,
+  ) {
+    if (!file) throw new BadRequestException('No file was uploaded');
+
+    const submission = await this.loadForLab(id, user);
+    if (!canEditData(submission.status as ReportStatus)) {
+      throw new ConflictException(
+        `Attachments can only be added while the report is a draft or awaiting revision (current: ${submission.status})`,
+      );
+    }
+
+    const ext = ATTACHMENT_MIME_EXT[file.mimetype];
+    if (!ext) {
+      throw new BadRequestException(
+        'Unsupported file type. Allowed: PDF, image (PNG/JPEG/WebP/GIF), Excel, Word, CSV or text.',
+      );
+    }
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      throw new BadRequestException('Attachment must be 10 MB or smaller');
+    }
+
+    const { key } = await this.storage.saveObject({
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      ext,
+      folder: 'attachments',
+    });
+
+    const attachment = await this.prisma.attachment.create({
+      data: {
+        submissionId: submission.id,
+        sectionKey: dto.sectionKey,
+        fileName: sanitizeFileName(file.originalname),
+        storageKey: key,
+        mimeType: file.mimetype,
+        size: file.size,
+        uploadedById: user.id,
+      },
+      select: ATTACHMENT_SELECT,
+    });
+    await this.audit.record({
+      action: AuditAction.REPORT_ATTACHMENT_ADDED,
+      actorId: user.id,
+      entityType: 'ReportSubmission',
+      entityId: submission.id,
+      metadata: { attachmentId: attachment.id, fileName: attachment.fileName, sectionKey: dto.sectionKey ?? null },
+    });
+    return attachment;
+  }
+
+  /**
+   * Stream an attachment's bytes for download. Scoped like any other read (admins
+   * any lab; a lab head only its own). Returns the bytes plus the original name
+   * and MIME so the controller can set download headers.
+   */
+  async downloadAttachment(
+    id: string,
+    attachmentId: string,
+    user: AuthUser,
+  ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
+    const submission = await this.load(id);
+    this.assertAccess(submission, user);
+
+    const attachment = await this.prisma.attachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.submissionId !== id) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await this.storage.readObject(attachment.storageKey);
+    } catch {
+      // The row exists but the stored object is gone/unreadable.
+      throw new NotFoundException('Attachment file is no longer available');
+    }
+    return { buffer, fileName: attachment.fileName, mimeType: attachment.mimeType };
+  }
+
+  /**
+   * Remove an attachment. The owning laboratory only, and only while the report
+   * is editable — consistent with when it could be added.
+   */
+  async removeAttachment(id: string, attachmentId: string, user: AuthUser) {
+    const submission = await this.loadForLab(id, user);
+    if (!canEditData(submission.status as ReportStatus)) {
+      throw new ConflictException(
+        `Attachments can only be removed while the report is a draft or awaiting revision (current: ${submission.status})`,
+      );
+    }
+
+    const attachment = await this.prisma.attachment.findUnique({ where: { id: attachmentId } });
+    if (!attachment || attachment.submissionId !== id) {
+      throw new NotFoundException('Attachment not found');
+    }
+
+    await this.prisma.attachment.delete({ where: { id: attachmentId } });
+    // Remove the stored object after the row is gone (best-effort cleanup).
+    await this.storage.removeObject(attachment.storageKey);
+    await this.audit.record({
+      action: AuditAction.REPORT_ATTACHMENT_REMOVED,
+      actorId: user.id,
+      entityType: 'ReportSubmission',
+      entityId: id,
+      metadata: { attachmentId, fileName: attachment.fileName },
+    });
+    return { ok: true };
+  }
+
   // ---- Internals ------------------------------------------------------------
 
   private async runLabTransition(id: string, user: AuthUser, action: Extract<WorkflowAction, 'submit' | 'resubmit'>) {
@@ -630,6 +793,21 @@ export class SubmissionsService {
   private schemaFromVersion(fieldSchema: Prisma.JsonValue | null | undefined): FieldSchema | null {
     return coerceFieldSchema(fieldSchema);
   }
+}
+
+/**
+ * Keep a user-supplied filename safe to echo back in a Content-Disposition
+ * header and readable in listings: strip any path, control chars and quotes,
+ * collapse whitespace, and cap the length. Never used as a filesystem path (the
+ * stored object is keyed by a server-generated UUID), only for display/download.
+ */
+function sanitizeFileName(name: string | undefined): string {
+  const base = (name ?? '').split(/[\\/]/).pop() ?? '';
+  const cleaned = base
+    .replace(/[\u0000-\u001f"]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.slice(0, 255) || 'attachment';
 }
 
 function labelWithCode(name?: string | null, code?: string | null): string {

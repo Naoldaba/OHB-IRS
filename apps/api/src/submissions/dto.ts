@@ -67,6 +67,15 @@ export class AddFeedbackDto {
   parentId?: string;
 }
 
+/** Body for `POST /submissions/:id/attachments` (multipart; the file rides alongside). */
+export class UploadAttachmentDto {
+  /** Optional report section the attachment supports (anchors it in the UI). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  sectionKey?: string;
+}
+
 /** Optional query filters for the admin submission list. */
 export class ListSubmissionsQueryDto {
   @IsOptional()

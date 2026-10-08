@@ -11,6 +11,7 @@ import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
 import { ExportMenu } from '@/components/report/ExportMenu';
+import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
 import { anchorOptions } from '@/components/report/anchors';
 
 export default function AdminSubmissionDetail() {
@@ -122,6 +123,10 @@ export default function AdminSubmissionDetail() {
             ) : (
               <Callout tone="danger">This submission has no usable schema.</Callout>
             )}
+          </Card>
+
+          <Card title="Supporting documents" desc="Files the laboratory attached to this report.">
+            <AttachmentsPanel submissionId={id} />
           </Card>
 
           <Card title="Submission history" desc="Every submit and resubmit, kept immutably.">

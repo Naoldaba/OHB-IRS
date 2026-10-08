@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto';
-import { mkdir, unlink, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { isAbsolute, join } from 'path';
 import { Logger } from '@nestjs/common';
 import {
+  StorageObjectResult,
   StorageProvider,
   StorageSaveInput,
   StorageSaveResult,
@@ -53,6 +54,45 @@ export class LocalDiskStorage extends StorageProvider {
       // Missing file or race — cleanup is best-effort, never fatal.
       this.logger.warn(`Could not remove stored avatar ${relative}: ${String(err)}`);
     }
+  }
+
+  // ---- Private objects (keyed, not publicly served) -------------------------
+
+  async saveObject(input: StorageSaveInput): Promise<StorageObjectResult> {
+    const fileName = `${randomUUID()}.${input.ext}`;
+    const dir = join(this.rootDir, input.folder);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, fileName), input.buffer);
+    // The key is the path relative to the root, always forward-slashed so it is
+    // stable across platforms and safe to persist.
+    return { key: `${input.folder}/${fileName}` };
+  }
+
+  async readObject(key: string): Promise<Buffer> {
+    return readFile(this.resolveKey(key));
+  }
+
+  async removeObject(key: string): Promise<void> {
+    let abs: string;
+    try {
+      abs = this.resolveKey(key);
+    } catch {
+      return; // malformed key — nothing we own to remove
+    }
+    try {
+      await unlink(abs);
+    } catch (err) {
+      // Missing file or race — cleanup is best-effort, never fatal.
+      this.logger.warn(`Could not remove stored object ${key}: ${String(err)}`);
+    }
+  }
+
+  /** Resolves a stored key to an absolute path under the root, or throws. */
+  private resolveKey(key: string): string {
+    if (!key || isAbsolute(key) || key.includes('..') || key.includes('\0')) {
+      throw new Error(`Invalid storage key: ${key}`);
+    }
+    return join(this.rootDir, key);
   }
 
   /** Joins base + path segments into a normalized URL with single slashes. */

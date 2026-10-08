@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -8,12 +9,16 @@ import {
   Query,
   Res,
   StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { RoleName } from '@ohb/shared';
 import { Roles, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
-import { SubmissionsService } from './submissions.service';
+import { ATTACHMENT_MAX_BYTES, SubmissionsService } from './submissions.service';
 import {
   AddFeedbackDto,
   CreateSubmissionDto,
@@ -21,6 +26,7 @@ import {
   ListSubmissionsQueryDto,
   RequestRevisionDto,
   UpdateSubmissionDataDto,
+  UploadAttachmentDto,
 } from './dto';
 
 /**
@@ -75,6 +81,64 @@ export class SubmissionsController {
       'Content-Length': String(buffer.length),
     });
     return new StreamableFile(buffer);
+  }
+
+  // ---- Attachments ----------------------------------------------------------
+
+  /** Supporting documents on a submission. Scoped read (admins any lab; a lab its own). */
+  @Get(':id/attachments')
+  listAttachments(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.submissions.listAttachments(id, user);
+  }
+
+  /** Upload a supporting document. Owning laboratory only; editable states only. */
+  @Post(':id/attachments')
+  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: ATTACHMENT_MAX_BYTES },
+    }),
+  )
+  uploadAttachment(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() dto: UploadAttachmentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.submissions.addAttachment(id, user, file, dto);
+  }
+
+  /** Download an attachment's bytes (credentialed, access-scoped). */
+  @Get(':id/attachments/:attachmentId/download')
+  async downloadAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, fileName, mimeType } = await this.submissions.downloadAttachment(
+      id,
+      attachmentId,
+      user,
+    );
+    res.set({
+      'Content-Type': mimeType,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      'Content-Length': String(buffer.length),
+    });
+    return new StreamableFile(buffer);
+  }
+
+  /** Remove an attachment. Owning laboratory only; editable states only. */
+  @Delete(':id/attachments/:attachmentId')
+  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  removeAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.submissions.removeAttachment(id, attachmentId, user);
   }
 
   // ---- Lab authoring --------------------------------------------------------

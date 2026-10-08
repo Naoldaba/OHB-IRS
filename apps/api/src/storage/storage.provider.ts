@@ -27,17 +27,47 @@ export interface StorageSaveResult {
   url: string;
 }
 
+/** The result of saving a private object: an opaque key, not a public URL. */
+export interface StorageObjectResult {
+  /**
+   * Opaque backend key the object is stored under (e.g. `attachments/<uuid>.pdf`
+   * for local disk, or an S3 object key). Persisted and passed back to
+   * {@link StorageProvider.readObject} / {@link StorageProvider.removeObject}.
+   */
+  key: string;
+}
+
 /** Contract every storage backend implements. Injected via the `STORAGE` token. */
 export abstract class StorageProvider {
-  /** Persists the bytes and returns the public URL to store in the database. */
+  /**
+   * Persists the bytes as a *public* object and returns the URL to store in the
+   * database. Used for assets served directly to the browser (profile pictures).
+   */
   abstract save(input: StorageSaveInput): Promise<StorageSaveResult>;
 
   /**
-   * Best-effort deletion of a previously saved object, given the public URL that
-   * was stored. Must not throw when the object belongs to another backend or no
-   * longer exists — callers treat cleanup as non-critical.
+   * Best-effort deletion of a previously saved public object, given the public
+   * URL that was stored. Must not throw when the object belongs to another
+   * backend or no longer exists — callers treat cleanup as non-critical.
    */
   abstract remove(url: string): Promise<void>;
+
+  /**
+   * Persists the bytes as a *private* object and returns an opaque storage key.
+   * Unlike {@link save}, private objects are never served by a public static
+   * mount — they are streamed back only through an authorized endpoint (report
+   * attachments may contain lab data, so access must be scoped server-side).
+   */
+  abstract saveObject(input: StorageSaveInput): Promise<StorageObjectResult>;
+
+  /** Reads back a private object's bytes by its stored key. Throws if missing. */
+  abstract readObject(key: string): Promise<Buffer>;
+
+  /**
+   * Best-effort deletion of a private object by its stored key. Must not throw
+   * when the object no longer exists — callers treat cleanup as non-critical.
+   */
+  abstract removeObject(key: string): Promise<void>;
 }
 
 /** DI token for the configured {@link StorageProvider}. */

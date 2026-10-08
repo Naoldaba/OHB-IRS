@@ -36,6 +36,8 @@ const ACTION_LABEL: Record<AuditAction, string> = {
   [AuditAction.REPORT_RESUBMITTED]: 'Report resubmitted',
   [AuditAction.REPORT_APPROVED]: 'Report approved',
   [AuditAction.REPORT_EXPORTED]: 'Report exported',
+  [AuditAction.REPORT_ATTACHMENT_ADDED]: 'Attachment added',
+  [AuditAction.REPORT_ATTACHMENT_REMOVED]: 'Attachment removed',
   [AuditAction.DEFINITION_VERSION_CREATED]: 'Definition version created',
   [AuditAction.DEFINITION_VERSION_PUBLISHED]: 'Definition version published',
   [AuditAction.RULE_CREATED]: 'Rule created',

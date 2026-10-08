@@ -159,6 +159,18 @@ export interface Feedback {
   replies?: Feedback[];
 }
 
+/** A supporting document attached to a submission (optionally anchored to a section). */
+export interface Attachment {
+  id: string;
+  submissionId: string;
+  sectionKey?: string | null;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  uploadedBy?: { id: string; fullName: string };
+}
+
 /** An immutable snapshot written on each submit / resubmit. */
 export interface SubmissionVersionRow {
   id: string;

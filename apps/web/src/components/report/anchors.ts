@@ -51,6 +51,16 @@ export function anchorOptions(model: RenderModel | null): AnchorOption[] {
   return out;
 }
 
+/**
+ * Report sections an attachment can be anchored to. Only the simple layout has
+ * named sections; a matrix report has no section list, so this returns none and
+ * the attachment stays general.
+ */
+export function sectionOptions(model: RenderModel | null): { key: string; label: string }[] {
+  if (!model || model.layout !== 'simple') return [];
+  return model.sections.map((s) => ({ key: s.key, label: s.label }));
+}
+
 /** Human-readable label for a stored (sectionKey, fieldKey) anchor. */
 export function anchorLabel(
   model: RenderModel | null | undefined,
