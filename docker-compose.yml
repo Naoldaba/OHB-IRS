@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ohb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ohb
+      POSTGRES_PASSWORD: ohb_dev_password
+      POSTGRES_DB: ohb_reports
+    # Host port 5433 avoids clashing with a native Postgres on 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - ohb_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ohb -d ohb_reports"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ohb_pgdata:

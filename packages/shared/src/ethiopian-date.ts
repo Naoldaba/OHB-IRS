@@ -1,0 +1,146 @@
+/**
+ * Ethiopian (Ge'ez) calendar utilities.
+ *
+ * The database stores canonical Gregorian/UTC dates; the UI presents and
+ * accepts Ethiopian-calendar dates. These helpers convert between the two and
+ * derive reporting-period ranges. Conversions use the Julian Day Number (JDN)
+ * as an intermediate, which is exact for proleptic Gregorian dates.
+ *
+ * Timezone for the bureau is Africa/Addis Ababa (UTC+3, no DST).
+ */
+
+export const ADDIS_ABABA_TZ = 'Africa/Addis Ababa';
+
+/** JDN of the Amete Mihret epoch used by the conversion formulas. */
+const JD_EPOCH_OFFSET_AMETE_MIHRET = 1723856;
+
+export interface CalendarDate {
+  year: number;
+  month: number; // 1-based
+  day: number; // 1-based
+}
+
+/** Ethiopian month names (transliterated). Month 13 is Pagume (5 or 6 days). */
+export const ETHIOPIAN_MONTHS: readonly string[] = [
+  'Meskerem',
+  'Tikimt',
+  'Hidar',
+  'Tahsas',
+  'Tir',
+  'Yekatit',
+  'Megabit',
+  'Miazia',
+  'Ginbot',
+  'Sene',
+  'Hamle',
+  'Nehase',
+  'Pagume',
+];
+
+function mod(a: number, b: number): number {
+  return ((a % b) + b) % b;
+}
+
+/** Proleptic Gregorian calendar date -> Julian Day Number. */
+export function gregorianToJdn(year: number, month: number, day: number): number {
+  const a = Math.floor((14 - month) / 12);
+  const y = year + 4800 - a;
+  const m = month + 12 * a - 3;
+  return (
+    day +
+    Math.floor((153 * m + 2) / 5) +
+    365 * y +
+    Math.floor(y / 4) -
+    Math.floor(y / 100) +
+    Math.floor(y / 400) -
+    32045
+  );
+}
+
+/** Julian Day Number -> proleptic Gregorian calendar date. */
+export function jdnToGregorian(jdn: number): CalendarDate {
+  const a = jdn + 32044;
+  const b = Math.floor((4 * a + 3) / 146097);
+  const c = a - Math.floor((146097 * b) / 4);
+  const d = Math.floor((4 * c + 3) / 1461);
+  const e = c - Math.floor((1461 * d) / 4);
+  const m = Math.floor((5 * e + 2) / 153);
+  return {
+    day: e - Math.floor((153 * m + 2) / 5) + 1,
+    month: m + 3 - 12 * Math.floor(m / 10),
+    year: 100 * b + d - 4800 + Math.floor(m / 10),
+  };
+}
+
+/** Ethiopian calendar date -> Julian Day Number. */
+export function ethiopianToJdn(year: number, month: number, day: number): number {
+  return (
+    JD_EPOCH_OFFSET_AMETE_MIHRET +
+    365 * year +
+    Math.floor(year / 4) +
+    30 * (month - 1) +
+    (day - 1)
+  );
+}
+
+/** Julian Day Number -> Ethiopian calendar date. */
+export function jdnToEthiopian(jdn: number): CalendarDate {
+  const offset = jdn - JD_EPOCH_OFFSET_AMETE_MIHRET;
+  const r = mod(offset, 1461);
+  const n = mod(r, 365) + 365 * Math.floor(r / 1460);
+  return {
+    year: 4 * Math.floor(offset / 1461) + Math.floor(r / 365) - Math.floor(r / 1460),
+    month: Math.floor(n / 30) + 1,
+    day: mod(n, 30) + 1,
+  };
+}
+
+/** A Gregorian JS Date (interpreted in UTC) -> Ethiopian calendar date. */
+export function toEthiopian(date: Date): CalendarDate {
+  const jdn = gregorianToJdn(
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    date.getUTCDate(),
+  );
+  return jdnToEthiopian(jdn);
+}
+
+/** An Ethiopian calendar date -> Gregorian JS Date at UTC midnight. */
+export function toGregorianDate(year: number, month: number, day: number): Date {
+  const g = jdnToGregorian(ethiopianToJdn(year, month, day));
+  return new Date(Date.UTC(g.year, g.month - 1, g.day));
+}
+
+/** True when an Ethiopian year has 6 days in Pagume (leap year). */
+export function isEthiopianLeapYear(year: number): boolean {
+  return mod(year, 4) === 3;
+}
+
+export function ethiopianMonthLength(year: number, month: number): number {
+  if (month < 13) return 30;
+  return isEthiopianLeapYear(year) ? 6 : 5;
+}
+
+export function formatEthiopian(date: CalendarDate): string {
+  return `${ETHIOPIAN_MONTHS[date.month - 1]} ${date.day}, ${date.year}`;
+}
+
+export interface GregorianRange {
+  /** Inclusive first Gregorian day of the period (UTC midnight). */
+  start: Date;
+  /** Exclusive Gregorian day after the period ends (UTC midnight). */
+  endExclusive: Date;
+}
+
+/**
+ * Gregorian date range for a given Ethiopian month, suitable for storing the
+ * canonical start/end of a monthly reporting period.
+ */
+export function ethiopianMonthRange(year: number, month: number): GregorianRange {
+  const start = toGregorianDate(year, month, 1);
+  const length = ethiopianMonthLength(year, month);
+  const end = toGregorianDate(year, month, length);
+  const endExclusive = new Date(end.getTime());
+  endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+  return { start, endExclusive };
+}

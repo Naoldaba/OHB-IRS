@@ -1,0 +1,302 @@
+// OHB Integrated Report System — core domain model.
+// Report-specific field data lives in ReportSubmission.data (jsonb), shaped and
+// validated by the code Report Registry in @ohb/shared. Shared workflow,
+// feedback, versions and audit are normalized tables here.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id          String  @id @default(cuid())
+  name        String  @unique // RoleName enum value
+  description String?
+  users       User[]
+}
+
+model Laboratory {
+  id          String             @id @default(cuid())
+  name        String             @unique
+  code        String             @unique
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  users       User[]
+  submissions ReportSubmission[]
+  requirements ReportingRequirement[]
+}
+
+model User {
+  id           String      @id @default(cuid())
+  email        String      @unique
+  passwordHash String
+  fullName     String
+  roleId       String
+  role         Role        @relation(fields: [roleId], references: [id])
+  laboratoryId String?
+  laboratory   Laboratory? @relation(fields: [laboratoryId], references: [id])
+  isActive     Boolean     @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  createdSubmissions   ReportSubmission[]   @relation("submissionCreatedBy")
+  submittedSubmissions ReportSubmission[]   @relation("submissionSubmittedBy")
+  reviewedSubmissions  ReportSubmission[]   @relation("submissionReviewedBy")
+  submittedVersions    SubmissionVersion[]  @relation("versionSubmittedBy")
+  feedbacks            Feedback[]           @relation("feedbackAuthor")
+  attachments          Attachment[]         @relation("attachmentUploadedBy")
+  auditLogs            AuditLog[]           @relation("auditActor")
+  createdDefinitionVersions   ReportDefinitionVersion[] @relation("defVersionCreatedBy")
+  publishedDefinitionVersions ReportDefinitionVersion[] @relation("defVersionPublishedBy")
+
+  @@index([roleId])
+  @@index([laboratoryId])
+}
+
+model ReportCategory {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  description   String?
+  createdAt     DateTime       @default(now())
+  reportTypes   ReportType[]
+  ruleTemplates RuleTemplate[]
+}
+
+model ReportType {
+  id               String                 @id @default(cuid())
+  categoryId       String
+  category         ReportCategory         @relation(fields: [categoryId], references: [id])
+  // Matches a registry definition code in @ohb/shared.
+  code             String                 @unique
+  name             String
+  description      String?
+  defaultFrequency String // PeriodType enum value
+  isActive         Boolean                @default(true)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  periods            ReportingPeriod[]
+  submissions        ReportSubmission[]
+  requirements       ReportingRequirement[]
+  definitionVersions ReportDefinitionVersion[]
+
+  @@index([categoryId])
+}
+
+model ReportingPeriod {
+  id           String             @id @default(cuid())
+  reportTypeId String
+  reportType   ReportType         @relation(fields: [reportTypeId], references: [id])
+  periodType   String // PeriodType enum value
+  // Ethiopian-calendar period identity.
+  year         Int // Ethiopian year
+  periodNumber Int // month (1-13) for MONTHLY, quarter (1-4), or 1 for YEARLY
+  label        String
+  // Canonical Gregorian/UTC boundaries for querying and ordering.
+  startDate    DateTime
+  endDate      DateTime // exclusive
+  dueDate      DateTime
+  createdAt    DateTime           @default(now())
+  submissions  ReportSubmission[]
+
+  @@unique([reportTypeId, year, periodNumber])
+  @@index([reportTypeId])
+}
+
+/// Admin-defined expectation: which labs must submit a report type.
+/// A null laboratoryId means "all active laboratories".
+model ReportingRequirement {
+  id           String      @id @default(cuid())
+  reportTypeId String
+  reportType   ReportType  @relation(fields: [reportTypeId], references: [id])
+  laboratoryId String?
+  laboratory   Laboratory? @relation(fields: [laboratoryId], references: [id])
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+
+  @@unique([reportTypeId, laboratoryId])
+}
+
+model ReportSubmission {
+  id               String          @id @default(cuid())
+  reportTypeId     String
+  reportType       ReportType      @relation(fields: [reportTypeId], references: [id])
+  laboratoryId     String
+  laboratory       Laboratory      @relation(fields: [laboratoryId], references: [id])
+  reportingPeriodId String
+  reportingPeriod  ReportingPeriod @relation(fields: [reportingPeriodId], references: [id])
+
+  status        String // ReportStatus enum value
+  data          Json    @default("{}")
+  currentVersion Int    @default(0)
+
+  // The report-definition version this submission was created under. Nullable
+  // until versioning is wired (Phase 3/4); keeps historical submissions
+  // interpretable under the rules in force when they were created.
+  definitionVersionId String?
+  definitionVersion   ReportDefinitionVersion? @relation(fields: [definitionVersionId], references: [id])
+  // Snapshot of FLAG-severity rule outcomes captured at submit time (advisory).
+  flags               Json?
+
+  createdById   String
+  createdBy     User      @relation("submissionCreatedBy", fields: [createdById], references: [id])
+  submittedById String?
+  submittedBy   User?     @relation("submissionSubmittedBy", fields: [submittedById], references: [id])
+  reviewedById  String?
+  reviewedBy    User?     @relation("submissionReviewedBy", fields: [reviewedById], references: [id])
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+
+  versions    SubmissionVersion[]
+  feedback    Feedback[]
+  attachments Attachment[]
+
+  // One submission per report type, per lab, per period.
+  @@unique([reportTypeId, laboratoryId, reportingPeriodId])
+  @@index([laboratoryId])
+  @@index([status])
+  @@index([definitionVersionId])
+}
+
+/// Immutable snapshot written on each submit / resubmit. History is never overwritten.
+model SubmissionVersion {
+  id           String           @id @default(cuid())
+  submissionId String
+  submission   ReportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  data         Json
+  status       String
+  submittedById String
+  submittedBy   User            @relation("versionSubmittedBy", fields: [submittedById], references: [id])
+  submittedAt  DateTime         @default(now())
+
+  @@unique([submissionId, versionNumber])
+  @@index([submissionId])
+}
+
+model Feedback {
+  id           String           @id @default(cuid())
+  submissionId String
+  submission   ReportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User             @relation("feedbackAuthor", fields: [authorId], references: [id])
+  type         String // FeedbackType enum value
+  message      String
+  // Optional anchoring to a specific section/field of the report.
+  sectionKey   String?
+  fieldKey     String?
+  createdAt    DateTime         @default(now())
+
+  @@index([submissionId])
+}
+
+model Attachment {
+  id           String           @id @default(cuid())
+  submissionId String
+  submission   ReportSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  sectionKey   String?
+  fileName     String
+  storageKey   String
+  mimeType     String
+  size         Int
+  uploadedById String
+  uploadedBy   User             @relation("attachmentUploadedBy", fields: [uploadedById], references: [id])
+  createdAt    DateTime         @default(now())
+
+  @@index([submissionId])
+}
+
+/// An immutable-once-published snapshot of a report type's field structure plus
+/// its attached business rules. Submissions pin the version they were created
+/// under. See IMPLEMENTATION_PLAN §6.2.
+model ReportDefinitionVersion {
+  id           String     @id @default(cuid())
+  reportTypeId String
+  reportType   ReportType @relation(fields: [reportTypeId], references: [id])
+  version      Int
+  status       String // ReportDefinitionStatus enum value
+  schemaSource String // SchemaSource enum value
+  // Field structure: a registry snapshot (REGISTRY) or authored structure (CONFIGURED).
+  fieldSchema  Json       @default("{}")
+
+  createdById   String
+  createdBy     User      @relation("defVersionCreatedBy", fields: [createdById], references: [id])
+  publishedById String?
+  publishedBy   User?     @relation("defVersionPublishedBy", fields: [publishedById], references: [id])
+  createdAt     DateTime  @default(now())
+  publishedAt   DateTime?
+
+  rules       BusinessRule[]
+  submissions ReportSubmission[]
+
+  @@unique([reportTypeId, version])
+  @@index([reportTypeId])
+}
+
+/// A single declarative business rule attached to a definition version.
+/// `condition` and `action` are whitelisted JSON ASTs — never executable code.
+/// Editable only while the version is DRAFT; frozen once published.
+model BusinessRule {
+  id                  String                  @id @default(cuid())
+  definitionVersionId String
+  definitionVersion   ReportDefinitionVersion @relation(fields: [definitionVersionId], references: [id], onDelete: Cascade)
+  key                 String
+  name                String
+  description         String?
+  kind                String // BusinessRuleKind enum value
+  severity            String? // RuleSeverity (VALIDATION / CROSS_FIELD only)
+  condition           Json    @default("{}")
+  action              Json    @default("{}")
+  enabled             Boolean @default(true)
+  order               Int     @default(0)
+
+  templateId String?
+  template   RuleTemplate? @relation(fields: [templateId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([definitionVersionId, key])
+  @@index([definitionVersionId])
+}
+
+/// A reusable rule blueprint an admin can apply to a definition version and then
+/// bind to concrete fields/parameters. Scope is GLOBAL or a specific category.
+model RuleTemplate {
+  id                String          @id @default(cuid())
+  name              String          @unique
+  description       String?
+  kind              String // BusinessRuleKind enum value
+  scope             String // RuleTemplateScope enum value
+  categoryId        String?
+  category          ReportCategory? @relation(fields: [categoryId], references: [id])
+  conditionTemplate Json            @default("{}")
+  actionTemplate    Json            @default("{}")
+  parameters        Json            @default("{}")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  rules BusinessRule[]
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("auditActor", fields: [actorId], references: [id])
+  action     String // AuditAction enum value
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+}
