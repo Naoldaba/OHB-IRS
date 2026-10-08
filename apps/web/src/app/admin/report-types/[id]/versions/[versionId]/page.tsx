@@ -25,6 +25,7 @@ import {
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { MatrixBuilder } from '@/components/builder/MatrixBuilder';
 import { SimpleBuilder } from '@/components/builder/SimpleBuilder';
+import { RuleBuilder } from '@/components/builder/RuleBuilder';
 import {
   emptyMatrixSchema,
   emptySimpleSchema,
@@ -41,6 +42,7 @@ export default function BuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<'structure' | 'rules'>('structure');
 
   const load = useCallback(async () => {
     const v = await api.get<DefinitionVersion>(
@@ -120,20 +122,25 @@ export default function BuilderPage() {
         </Button>
         <div className="page-head__row" style={{ marginTop: 8 }}>
           <div>
-            <div className="micro-label">Report Builder · Structure</div>
+            <div className="micro-label">
+              Report Builder · {tab === 'rules' ? 'Rules' : 'Structure'}
+            </div>
             <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               Version {version.version} <DefinitionStatusPill status={version.status} />
             </h1>
             <p>
-              Author the field structure. It is saved as a draft and validated, then
-              published so laboratories can fill it.
+              {tab === 'rules'
+                ? 'Attach validation, cross-field, conditional and calculation rules. They are frozen when the version is published.'
+                : 'Author the field structure. It is saved as a draft and validated, then published so laboratories can fill it.'}
             </p>
           </div>
           {!readOnly && (
             <div className="toolbar">
-              <Button variant="secondary" onClick={save} disabled={busy || !dirty || !schema}>
-                <Save size={16} /> Save
-              </Button>
+              {tab === 'structure' && (
+                <Button variant="secondary" onClick={save} disabled={busy || !dirty || !schema}>
+                  <Save size={16} /> Save
+                </Button>
+              )}
               <Button
                 onClick={publish}
                 disabled={busy || !schema || !(localValidation?.ok ?? false)}
@@ -145,6 +152,19 @@ export default function BuilderPage() {
           )}
         </div>
       </div>
+
+      {schema && (
+        <div style={{ marginBottom: 16 }}>
+          <SegmentedToggle
+            options={[
+              { value: 'structure', label: 'Structure' },
+              { value: 'rules', label: 'Rules' },
+            ]}
+            value={tab}
+            onChange={(v) => setTab(v)}
+          />
+        </div>
+      )}
 
       {readOnly && (
         <div style={{ marginBottom: 16 }}>
@@ -175,6 +195,20 @@ export default function BuilderPage() {
           }
           onHivTemplate={() => update(hivViralLoadTemplate())}
         />
+      ) : tab === 'rules' ? (
+        dirty ? (
+          <Callout title="Save your structure first">
+            You have unsaved structure changes. Save them before authoring rules so
+            the field catalog stays in sync.
+          </Callout>
+        ) : (
+          <RuleBuilder
+            reportTypeId={id}
+            versionId={versionId}
+            schema={schema}
+            readOnly={readOnly}
+          />
+        )
       ) : (
         <div className="split" style={{ gridTemplateColumns: '1fr 1fr' }}>
           <div>

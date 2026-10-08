@@ -186,10 +186,18 @@ h4 {
   letter-spacing: 0.06em;
 }
 
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
 .page {
+  width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
   padding: 28px var(--content-gutter) 56px;
+  /* Grow to fill the viewport so the footer sits at the bottom on short pages. */
+  flex: 1 0 auto;
 }
 .page-head {
   margin-bottom: 22px;

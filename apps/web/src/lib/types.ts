@@ -123,3 +123,21 @@ export interface SaveDraftResponse {
   submission: SubmissionSummary;
   validation: { ok: boolean; errors: { path: string; message: string }[] };
 }
+
+/** A persisted business rule, as returned by the rules API (jsonb AST included). */
+export interface BusinessRuleRow {
+  id: string;
+  definitionVersionId: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  kind: string;
+  severity?: string | null;
+  condition?: Record<string, unknown> | null;
+  action: Record<string, unknown>;
+  enabled: boolean;
+  order: number;
+  templateId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

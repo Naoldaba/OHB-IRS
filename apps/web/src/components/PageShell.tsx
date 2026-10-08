@@ -41,7 +41,7 @@ export function PageShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <>
+    <div className="app-shell">
       <div className="utility-strip">
         <div className="utility-strip__inner">
           <span className="micro-label">
@@ -107,9 +107,10 @@ export function PageShell({ children }: { children: ReactNode }) {
       <footer className="app-footer">
         <div className="app-footer__inner">
           <span>Oromia Health Bureau — Laboratory Reporting &amp; Monitoring System</span>
+          <span>© Naol Daba. All Rights Reserved.</span>
           <span>Support: support@ohb.local · +251 11 000 0000 · Finfinne, Oromia</span>
         </div>
       </footer>
-    </>
+    </div>
   );
 }
