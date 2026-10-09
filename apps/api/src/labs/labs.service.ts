@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -12,6 +13,24 @@ import { CreateLabDto, UpdateLabDto } from './dto';
 /** Derives a canonical lab code from a display name (same rule as the seed). */
 function deriveCode(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, '_');
+}
+
+/**
+ * A map position needs both a latitude and a longitude or neither — reject a
+ * half-set pair so a lab is never stored with one coordinate (which could not
+ * be plotted and would read as a data error).
+ */
+function assertCoordinatePair(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): void {
+  const hasLat = latitude !== null && latitude !== undefined;
+  const hasLng = longitude !== null && longitude !== undefined;
+  if (hasLat !== hasLng) {
+    throw new BadRequestException(
+      'Provide both latitude and longitude, or leave both blank.',
+    );
+  }
 }
 
 @Injectable()
@@ -40,8 +59,16 @@ export class LabsService {
   async create(dto: CreateLabDto, actorId: string) {
     const name = dto.name.trim();
     const code = dto.code?.trim() || deriveCode(name);
+    assertCoordinatePair(dto.latitude, dto.longitude);
     try {
-      const lab = await this.prisma.laboratory.create({ data: { name, code } });
+      const lab = await this.prisma.laboratory.create({
+        data: {
+          name,
+          code,
+          latitude: dto.latitude ?? null,
+          longitude: dto.longitude ?? null,
+        },
+      });
       await this.audit.record({
         action: AuditAction.LAB_CREATED,
         actorId,
@@ -62,6 +89,14 @@ export class LabsService {
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.code !== undefined) data.code = dto.code.trim();
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    // Coordinates: a provided number sets it, explicit null clears it. When the
+    // request carries both (the admin form always does), guard the obvious
+    // mistake of a half-set pair.
+    if (dto.latitude !== undefined && dto.longitude !== undefined) {
+      assertCoordinatePair(dto.latitude, dto.longitude);
+    }
+    if (dto.latitude !== undefined) data.latitude = dto.latitude;
+    if (dto.longitude !== undefined) data.longitude = dto.longitude;
 
     try {
       const lab = await this.prisma.laboratory.update({ where: { id }, data });

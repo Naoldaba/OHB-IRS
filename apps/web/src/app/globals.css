@@ -1769,3 +1769,147 @@ button.auth-link {
   border-radius: 12px;
   background: var(--surface-2, rgba(127, 127, 127, 0.05));
 }
+
+/* ---- Geographic compliance map (Phase 21) --------------------------------- */
+.geomap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.geomap__svg {
+  width: 100%;
+  height: auto;
+  max-height: 540px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+.geomap__region {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+.geomap__marker {
+  cursor: default;
+  outline: none;
+}
+.geomap__marker circle {
+  transition: r 0.1s ease;
+}
+.geomap__marker:focus-visible circle,
+.geomap__marker.is-active circle {
+  stroke: var(--primary-accent);
+  stroke-width: 3;
+}
+.geomap__code {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.geomap__active {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 22px;
+  font-size: 14px;
+  color: var(--text);
+}
+.geomap__active-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.geomap__unplotted {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.geomap__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* ---- Submission activity timeline (Phase 21) ------------------------------ */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+.timeline__item {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  padding: 0 0 18px 0;
+}
+/* Connecting rail between the dots. */
+.timeline__item::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 28px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+.timeline__item:last-child {
+  padding-bottom: 0;
+}
+.timeline__item:last-child::before {
+  display: none;
+}
+.timeline__dot {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.timeline__body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 3px;
+}
+.timeline__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.timeline__tag {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+}
+.timeline__message {
+  margin-top: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

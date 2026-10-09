@@ -10,6 +10,7 @@ import { Button, Callout, Card, Field, Pill, Select, Spinner, StatusPill, Textar
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
+import { SubmissionTimeline } from '@/components/report/SubmissionTimeline';
 import { ExportMenu } from '@/components/report/ExportMenu';
 import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
 import { anchorOptions } from '@/components/report/anchors';
@@ -134,6 +135,13 @@ export default function AdminSubmissionDetail() {
               submissionId={id}
               renderModel={detail.renderModel}
               refreshKey={detail.currentVersion}
+            />
+          </Card>
+
+          <Card title="Activity timeline" desc="Every step in this report's lifecycle, in order.">
+            <SubmissionTimeline
+              submissionId={id}
+              refreshKey={`${detail.status}:${detail.currentVersion}:${detail.feedback.length}`}
             />
           </Card>
         </div>

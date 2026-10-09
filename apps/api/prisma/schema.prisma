@@ -24,6 +24,11 @@ model Laboratory {
   name        String             @unique
   code        String             @unique
   isActive    Boolean            @default(true)
+  // Admin-managed geographic position for the compliance map (Phase 21). Both
+  // null until an admin sets them; a lab without coordinates is listed but not
+  // plotted. Never hard-coded in application logic (CLAUDE.md no-hard-coded-labs).
+  latitude    Float?
+  longitude   Float?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   users       User[]

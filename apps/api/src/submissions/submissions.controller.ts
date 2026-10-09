@@ -58,6 +58,12 @@ export class SubmissionsController {
     return this.submissions.listVersions(id, user);
   }
 
+  /** Ordered lifecycle timeline (Phase 21). Access-scoped like any other read. */
+  @Get(':id/timeline')
+  timeline(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.submissions.timeline(id, user);
+  }
+
   /**
    * Download the submission as Excel / DOCX / PDF. Scoped like any other read
    * (admins any lab; a lab head only its own) by the service.

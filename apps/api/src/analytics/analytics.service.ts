@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { ReportStatus } from '@ohb/shared';
+import { AuditAction, ReportStatus } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -52,6 +52,9 @@ export interface LabComplianceRow extends ComplianceCounts {
   laboratoryId: string;
   laboratoryName: string;
   laboratoryCode: string;
+  /** Admin-managed map position; null when unset (lab listed but not plotted). */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface TrendPoint extends ComplianceCounts {
@@ -109,6 +112,46 @@ export interface DashboardAnalytics {
   expectedSlots?: ExpectedSlot[];
   /** Anonymized regional comparison; present only on the lab-scoped dashboard. */
   benchmark?: RegionalBenchmark | null;
+}
+
+/** A latency distribution over some set of review events, in hours. */
+export interface SlaStat {
+  /** How many events contributed to the figures. */
+  count: number;
+  /** Mean latency in hours (null when count is 0). */
+  averageHours: number | null;
+  /** Median latency in hours (null when count is 0). */
+  medianHours: number | null;
+}
+
+/** One submission still awaiting a Bureau decision, with how long it has waited. */
+export interface OldestAwaitingReview {
+  submissionId: string;
+  reportTypeName: string;
+  laboratoryName: string;
+  laboratoryCode: string;
+  periodLabel: string;
+  status: ReportStatus;
+  submittedAt: string;
+  /** Hours elapsed since the submission last arrived (now − submittedAt). */
+  waitingHours: number;
+}
+
+/**
+ * Bureau review SLA / time-to-review (Phase 21) — the accountability complement
+ * to lab timeliness. Every latency is derived from immutable {@link AuditLog}
+ * timestamps (never fabricated): each arrival event (submit / resubmit) is
+ * paired with the review action that followed it, and each approval with the
+ * arrival that preceded it.
+ */
+export interface ReviewSlaAnalytics {
+  generatedAt: string;
+  /** Arrival → first Bureau review action (review started / revision / approval). */
+  timeToFirstReview: SlaStat;
+  /** Arrival → approval, for submissions that reached APPROVED. */
+  timeToApproval: SlaStat;
+  /** Submissions still awaiting a decision, longest-waiting first. */
+  oldestAwaitingReview: OldestAwaitingReview[];
 }
 
 /**
@@ -243,6 +286,8 @@ export class AnalyticsService {
       laboratoryId: l.id,
       laboratoryName: l.name,
       laboratoryCode: l.code,
+      latitude: l.latitude,
+      longitude: l.longitude,
     }));
 
     // Anonymized regional comparison for the lab-scoped view only.
@@ -261,6 +306,119 @@ export class AnalyticsService {
       laboratories,
       trends,
       ...(labScoped ? { expectedSlots, benchmark } : {}),
+    };
+  }
+
+  /**
+   * Bureau review SLA / time-to-review (Phase 21). Reconstructs each submission's
+   * review timeline from the immutable audit log and measures two latencies:
+   * arrival → first review action, and arrival → approval. Also returns the
+   * submissions still awaiting a Bureau decision, longest-waiting first. Every
+   * figure comes from real timestamps — nothing is fabricated.
+   */
+  async reviewSla(opts: { oldestLimit?: number } = {}): Promise<ReviewSlaAnalytics> {
+    const now = new Date();
+    const limit = Math.min(Math.max(opts.oldestLimit ?? 10, 1), 50);
+
+    const logs = await this.prisma.auditLog.findMany({
+      where: {
+        entityType: 'ReportSubmission',
+        action: {
+          in: [
+            AuditAction.REPORT_SUBMITTED,
+            AuditAction.REPORT_RESUBMITTED,
+            AuditAction.REPORT_REVIEW_STARTED,
+            AuditAction.REPORT_REVISION_REQUESTED,
+            AuditAction.REPORT_APPROVED,
+          ],
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { entityId: true, action: true, createdAt: true },
+    });
+
+    // Group the (already chronological) events per submission.
+    const bySubmission = new Map<string, { action: string; at: number }[]>();
+    for (const l of logs) {
+      if (!l.entityId) continue;
+      const arr = bySubmission.get(l.entityId);
+      const event = { action: l.action, at: l.createdAt.getTime() };
+      if (arr) arr.push(event);
+      else bySubmission.set(l.entityId, [event]);
+    }
+
+    const ARRIVAL = new Set<string>([
+      AuditAction.REPORT_SUBMITTED,
+      AuditAction.REPORT_RESUBMITTED,
+    ]);
+    const REVIEW_ACTION = new Set<string>([
+      AuditAction.REPORT_REVIEW_STARTED,
+      AuditAction.REPORT_REVISION_REQUESTED,
+      AuditAction.REPORT_APPROVED,
+    ]);
+
+    const firstReviewDeltas: number[] = [];
+    const approvalDeltas: number[] = [];
+    for (const events of bySubmission.values()) {
+      for (let i = 0; i < events.length; i++) {
+        const e = events[i];
+        if (ARRIVAL.has(e.action)) {
+          // The next review action after this arrival (if any).
+          for (let j = i + 1; j < events.length; j++) {
+            if (REVIEW_ACTION.has(events[j].action)) {
+              firstReviewDeltas.push(events[j].at - e.at);
+              break;
+            }
+          }
+        } else if (e.action === AuditAction.REPORT_APPROVED) {
+          // The arrival immediately preceding this approval.
+          for (let j = i - 1; j >= 0; j--) {
+            if (ARRIVAL.has(events[j].action)) {
+              approvalDeltas.push(e.at - events[j].at);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    // Submissions still awaiting a Bureau decision (real workflow state), aged
+    // from when they last arrived.
+    const awaiting = await this.prisma.reportSubmission.findMany({
+      where: {
+        status: {
+          in: [ReportStatus.SUBMITTED, ReportStatus.RESUBMITTED, ReportStatus.UNDER_REVIEW],
+        },
+        submittedAt: { not: null },
+      },
+      orderBy: { submittedAt: 'asc' },
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        submittedAt: true,
+        reportType: { select: { name: true } },
+        laboratory: { select: { name: true, code: true } },
+        reportingPeriod: { select: { label: true } },
+      },
+    });
+
+    const oldestAwaitingReview: OldestAwaitingReview[] = awaiting.map((s) => ({
+      submissionId: s.id,
+      reportTypeName: s.reportType.name,
+      laboratoryName: s.laboratory.name,
+      laboratoryCode: s.laboratory.code,
+      periodLabel: s.reportingPeriod.label,
+      status: s.status as ReportStatus,
+      submittedAt: s.submittedAt!.toISOString(),
+      waitingHours: round2((now.getTime() - s.submittedAt!.getTime()) / HOUR_MS),
+    }));
+
+    return {
+      generatedAt: now.toISOString(),
+      timeToFirstReview: slaStat(firstReviewDeltas),
+      timeToApproval: slaStat(approvalDeltas),
+      oldestAwaitingReview,
     };
   }
 
@@ -372,7 +530,7 @@ export class AnalyticsService {
         // requirement (incl. the all-labs ones) resolves to it and nothing else.
         where: { isActive: true, ...(filter.laboratoryId ? { id: filter.laboratoryId } : {}) },
         orderBy: { name: 'asc' },
-        select: { id: true, name: true, code: true },
+        select: { id: true, name: true, code: true, latitude: true, longitude: true },
       }),
       this.prisma.reportingRequirement.findMany({
         where: { isActive: true, ...typeWhere },
@@ -429,6 +587,24 @@ export class AnalyticsService {
 
     return { labs, labsByType, periods, subByKey, submissions, reportTypesCount: reportTypes.length };
   }
+}
+
+const HOUR_MS = 3_600_000;
+
+/** Round to two decimals (hours), the precision the SLA tiles display. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Summarize a set of latencies (in ms) as count + average + median hours. */
+function slaStat(deltasMs: number[]): SlaStat {
+  if (deltasMs.length === 0) return { count: 0, averageHours: null, medianHours: null };
+  const hours = deltasMs.map((d) => d / HOUR_MS);
+  const avg = hours.reduce((a, b) => a + b, 0) / hours.length;
+  const sorted = [...hours].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return { count: hours.length, averageHours: round2(avg), medianHours: round2(median) };
 }
 
 /** Composite key for the one submission that can exist per (reportType, lab, period). */

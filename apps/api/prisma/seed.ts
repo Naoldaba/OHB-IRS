@@ -14,17 +14,23 @@ import {
 
 const prisma = new PrismaClient();
 
-/** Regional laboratories from CLAUDE.md. Seeded as data, never hard-coded in logic. */
-const LABORATORIES = [
-  'Adama',
-  'Neqemte',
-  'Shashemene',
-  'Fiche',
-  'Bulehora',
-  'Negele',
-  'Ginir',
-  'Yabelo',
-  'Dembidolo',
+/**
+ * Regional laboratories from CLAUDE.md. Seeded as data, never hard-coded in
+ * logic. Each carries the approximate [latitude, longitude] of its town so the
+ * Phase 21 compliance map has something to plot on a fresh database; these are
+ * seed defaults only — an admin manages coordinates through the Labs screen and
+ * re-seeding never overwrites an edited value (coordinates are set on create).
+ */
+const LABORATORIES: { name: string; coords: [number, number] }[] = [
+  { name: 'Adama', coords: [8.54, 39.27] },
+  { name: 'Neqemte', coords: [9.09, 36.55] },
+  { name: 'Shashemene', coords: [7.2, 38.6] },
+  { name: 'Fiche', coords: [9.8, 38.73] },
+  { name: 'Bulehora', coords: [5.58, 38.25] },
+  { name: 'Negele', coords: [5.33, 39.58] },
+  { name: 'Ginir', coords: [7.13, 40.7] },
+  { name: 'Yabelo', coords: [4.88, 38.08] },
+  { name: 'Dembidolo', coords: [8.53, 34.8] },
 ];
 
 function labCode(name: string): string {
@@ -47,12 +53,18 @@ async function main() {
   const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: RoleName.BUREAU_ADMIN } });
   const labRole = await prisma.role.findUniqueOrThrow({ where: { name: RoleName.REGIONAL_LAB_HEAD } });
 
-  // Laboratories
-  for (const name of LABORATORIES) {
+  // Laboratories. Coordinates are backfilled only where still unset, so a fresh
+  // database is plottable immediately while an admin's later edits are never
+  // overwritten by a re-seed.
+  for (const { name, coords } of LABORATORIES) {
     await prisma.laboratory.upsert({
       where: { name },
       update: {},
-      create: { name, code: labCode(name) },
+      create: { name, code: labCode(name), latitude: coords[0], longitude: coords[1] },
+    });
+    await prisma.laboratory.updateMany({
+      where: { name, latitude: null, longitude: null },
+      data: { latitude: coords[0], longitude: coords[1] },
     });
   }
 

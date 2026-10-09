@@ -11,7 +11,7 @@ import { RoleName } from '@ohb/shared';
 import { CurrentUser, Roles } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { AnalyticsService } from './analytics.service';
-import { DashboardExportQueryDto, DashboardQueryDto } from './dto';
+import { DashboardExportQueryDto, DashboardQueryDto, ReviewSlaQueryDto } from './dto';
 import { renderAnalyticsExport } from './analytics-export';
 
 /**
@@ -44,6 +44,15 @@ export class AnalyticsController {
       trendLimit: query.trendLimit,
     });
     return stream(res, await renderAnalyticsExport(query.format ?? 'csv', 'bureau-compliance', data));
+  }
+
+  /**
+   * Bureau review SLA / time-to-review (Phase 21). Bureau-wide accountability
+   * metrics derived from the audit trail; BUREAU_ADMIN-only (class default).
+   */
+  @Get('review-sla')
+  reviewSla(@Query() query: ReviewSlaQueryDto) {
+    return this.analytics.reviewSla({ oldestLimit: query.oldestLimit });
   }
 
   /**

@@ -23,3 +23,14 @@ export class DashboardExportQueryDto extends DashboardQueryDto {
   @IsIn(['csv', 'xlsx'])
   format?: 'csv' | 'xlsx';
 }
+
+/** Query for the review-SLA endpoint (Phase 21). */
+export class ReviewSlaQueryDto {
+  /** How many of the longest-waiting submissions to return (1–50, default 10). */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  oldestLimit?: number;
+}

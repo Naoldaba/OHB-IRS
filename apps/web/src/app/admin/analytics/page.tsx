@@ -21,6 +21,8 @@ import type {
 } from '@/lib/types';
 import { Callout, Card, Select, Spinner } from '@/components/ui';
 import { AnalyticsExport } from '@/components/AnalyticsExport';
+import { ComplianceMap } from '@/components/ComplianceMap';
+import { ReviewSla } from '@/components/ReviewSla';
 
 /** Compliance target the Bureau measures labs against (a policy constant, not data). */
 const REGIONAL_MANDATE = 0.9;
@@ -208,6 +210,13 @@ function Dashboard({ data }: { data: DashboardAnalytics }) {
           </Card>
 
           <Card
+            title="Geographic compliance"
+            desc="Each laboratory plotted at its coordinates and colored by compliance band. Labs without coordinates are listed below the map."
+          >
+            <ComplianceMap labs={data.laboratories} />
+          </Card>
+
+          <Card
             title="Reporting trend"
             desc="Compliance across the most recent opened reporting periods."
           >
@@ -215,6 +224,8 @@ function Dashboard({ data }: { data: DashboardAnalytics }) {
           </Card>
         </>
       )}
+
+      <ReviewSla />
     </>
   );
 }

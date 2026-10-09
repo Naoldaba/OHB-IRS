@@ -11,6 +11,7 @@ import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { ValidationSummary } from '@/components/report/ValidationSummary';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
+import { SubmissionTimeline } from '@/components/report/SubmissionTimeline';
 import { ExportMenu } from '@/components/report/ExportMenu';
 import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
 import { sectionOptions } from '@/components/report/anchors';
@@ -301,6 +302,15 @@ export default function LabSubmissionPage() {
             submissionId={id}
             renderModel={detail.renderModel}
             refreshKey={detail.currentVersion}
+          />
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <Card title="Activity timeline" desc="Every step in this report's lifecycle, in order.">
+          <SubmissionTimeline
+            submissionId={id}
+            refreshKey={`${detail.status}:${detail.currentVersion}:${detail.feedback.length}`}
           />
         </Card>
       </div>

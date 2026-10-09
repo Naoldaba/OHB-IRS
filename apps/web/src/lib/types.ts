@@ -56,6 +56,9 @@ export interface Laboratory {
   name: string;
   zone?: string | null;
   town?: string | null;
+  /** Admin-managed map position; null when unset (lab listed but not plotted). */
+  latitude?: number | null;
+  longitude?: number | null;
   isActive: boolean;
   /** Present on the admin list endpoint. */
   _count?: { users: number };
@@ -240,6 +243,9 @@ export interface LabComplianceRow extends ComplianceCounts {
   laboratoryId: string;
   laboratoryName: string;
   laboratoryCode: string;
+  /** Admin-managed map position; null when unset (lab listed but not plotted). */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface TrendPoint extends ComplianceCounts {
@@ -287,6 +293,57 @@ export interface DashboardAnalytics {
   expectedSlots?: ExpectedSlot[];
   /** Anonymized regional comparison; present only on the lab-scoped dashboard. */
   benchmark?: RegionalBenchmark | null;
+}
+
+// ---- Review SLA / time-to-review (Phase 21) ---------------------------------
+
+/** A latency distribution over a set of review events, in hours. */
+export interface SlaStat {
+  count: number;
+  averageHours: number | null;
+  medianHours: number | null;
+}
+
+/** One submission still awaiting a Bureau decision, with how long it has waited. */
+export interface OldestAwaitingReview {
+  submissionId: string;
+  reportTypeName: string;
+  laboratoryName: string;
+  laboratoryCode: string;
+  periodLabel: string;
+  status: ReportStatus;
+  submittedAt: string;
+  waitingHours: number;
+}
+
+/** Bureau review SLA, derived from the audit trail (`GET /analytics/review-sla`). */
+export interface ReviewSlaAnalytics {
+  generatedAt: string;
+  timeToFirstReview: SlaStat;
+  timeToApproval: SlaStat;
+  oldestAwaitingReview: OldestAwaitingReview[];
+}
+
+// ---- Submission activity timeline (Phase 21) --------------------------------
+
+export type TimelineKind =
+  | 'created'
+  | 'submitted'
+  | 'resubmitted'
+  | 'review_started'
+  | 'revision_requested'
+  | 'feedback'
+  | 'approved';
+
+/** One ordered lifecycle event (`GET /submissions/:id/timeline`). */
+export interface TimelineEvent {
+  id: string;
+  kind: TimelineKind;
+  at: string;
+  actor: { id: string; fullName: string } | null;
+  title: string;
+  message?: string;
+  versionNumber?: number;
 }
 
 // ---- Notifications (Phase 9) ------------------------------------------------

@@ -542,6 +542,72 @@ export class SubmissionsService {
     });
   }
 
+  /**
+   * The submission's lifecycle as an ordered timeline (Phase 21): every workflow
+   * milestone from the immutable audit trail — created → submitted → review →
+   * feedback → revision → resubmit → approved — enriched with the feedback /
+   * revision message and the version snapshot each submit produced. Scoped like
+   * any other read (admins any lab; a lab head only its own). No synthetic
+   * events are invented; everything here is a real audit / feedback / version
+   * record, in chronological order.
+   */
+  async timeline(id: string, user: AuthUser): Promise<TimelineEvent[]> {
+    const submission = await this.load(id);
+    this.assertAccess(submission, user);
+
+    const [logs, feedback, versions] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where: {
+          entityType: 'ReportSubmission',
+          entityId: id,
+          action: { in: TIMELINE_ACTIONS },
+        },
+        orderBy: { createdAt: 'asc' },
+        include: { actor: { select: { id: true, fullName: true } } },
+      }),
+      this.prisma.feedback.findMany({
+        where: { submissionId: id },
+        select: { id: true, message: true },
+      }),
+      this.prisma.submissionVersion.findMany({
+        where: { submissionId: id },
+        orderBy: { submittedAt: 'asc' },
+        select: { versionNumber: true },
+      }),
+    ]);
+
+    const messageByFeedbackId = new Map(feedback.map((f) => [f.id, f.message]));
+    // Each submit / resubmit writes exactly one version snapshot, in the same
+    // chronological order as the arrival events — so consume them in order.
+    const versionQueue = versions.map((v) => v.versionNumber);
+
+    const events: TimelineEvent[] = [];
+    for (const l of logs) {
+      const kind = KIND_FOR_ACTION[l.action as AuditAction];
+      if (!kind) continue;
+      const event: TimelineEvent = {
+        id: l.id,
+        kind,
+        at: l.createdAt.toISOString(),
+        actor: l.actor,
+        title: TITLE_FOR_KIND[kind],
+      };
+      if (kind === 'revision_requested') {
+        const meta = l.metadata as { message?: string } | null;
+        if (meta?.message) event.message = meta.message;
+      } else if (kind === 'feedback') {
+        const meta = l.metadata as { feedbackId?: string } | null;
+        const message = meta?.feedbackId ? messageByFeedbackId.get(meta.feedbackId) : undefined;
+        if (message) event.message = message;
+      } else if (kind === 'submitted' || kind === 'resubmitted') {
+        const versionNumber = versionQueue.shift();
+        if (versionNumber !== undefined) event.versionNumber = versionNumber;
+      }
+      events.push(event);
+    }
+    return events;
+  }
+
   // ---- Attachments ----------------------------------------------------------
 
   /** Supporting documents on a submission. Scoped like any other read. */
@@ -877,4 +943,52 @@ const AUDIT_FOR_ACTION: Record<WorkflowAction, AuditAction> = {
   startReview: AuditAction.REPORT_REVIEW_STARTED,
   requestRevision: AuditAction.REPORT_REVISION_REQUESTED,
   approve: AuditAction.REPORT_APPROVED,
+};
+
+// ---- Submission activity timeline (Phase 21) --------------------------------
+
+/** The lifecycle milestones a submission timeline surfaces. */
+export type TimelineKind =
+  | 'created'
+  | 'submitted'
+  | 'resubmitted'
+  | 'review_started'
+  | 'revision_requested'
+  | 'feedback'
+  | 'approved';
+
+/** One ordered lifecycle event, built from a real audit / feedback / version record. */
+export interface TimelineEvent {
+  id: string;
+  kind: TimelineKind;
+  at: string;
+  actor: { id: string; fullName: string } | null;
+  title: string;
+  /** Feedback or revision-request message, when the event carries one. */
+  message?: string;
+  /** The immutable snapshot a submit / resubmit produced. */
+  versionNumber?: number;
+}
+
+/** Audit actions that count as timeline milestones (draft autosaves/exports excluded). */
+const KIND_FOR_ACTION: Partial<Record<AuditAction, TimelineKind>> = {
+  [AuditAction.REPORT_CREATED]: 'created',
+  [AuditAction.REPORT_SUBMITTED]: 'submitted',
+  [AuditAction.REPORT_RESUBMITTED]: 'resubmitted',
+  [AuditAction.REPORT_REVIEW_STARTED]: 'review_started',
+  [AuditAction.REPORT_REVISION_REQUESTED]: 'revision_requested',
+  [AuditAction.REPORT_FEEDBACK_ADDED]: 'feedback',
+  [AuditAction.REPORT_APPROVED]: 'approved',
+};
+
+const TIMELINE_ACTIONS = Object.keys(KIND_FOR_ACTION) as AuditAction[];
+
+const TITLE_FOR_KIND: Record<TimelineKind, string> = {
+  created: 'Draft created',
+  submitted: 'Submitted for review',
+  resubmitted: 'Resubmitted',
+  review_started: 'Review started',
+  revision_requested: 'Revision requested',
+  feedback: 'Feedback added',
+  approved: 'Approved',
 };
