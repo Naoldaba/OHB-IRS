@@ -179,7 +179,7 @@ export class NotificationsService {
     }
   }
 
-  /** "Monthly Lab Report for Meskerem 2017" — or possessive-friendly form. */
+  /** "Monthly Lab Report for Fulbaana 2017" — or possessive-friendly form. */
   private subject(submission: SubmissionForNotice, capital = false): string {
     const report = submission.reportType?.name ?? 'report';
     const period = submission.reportingPeriod?.label;

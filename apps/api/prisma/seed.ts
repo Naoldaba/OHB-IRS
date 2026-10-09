@@ -6,6 +6,7 @@ import {
   ReportDefinitionStatus,
   RoleName,
   SchemaSource,
+  ETHIOPIAN_MONTHS,
   ethiopianMonthRange,
   hivViralLoadDefinition,
   toFieldSchema,
@@ -124,7 +125,7 @@ async function main() {
     },
   });
 
-  // A sample monthly reporting period (Ethiopian year 2017, Meskerem / month 1).
+  // A sample monthly reporting period (Ethiopian year 2017, month 1 / Fulbaana).
   const periodYear = 2017;
   const periodNumber = 1;
   const range = ethiopianMonthRange(periodYear, periodNumber);
@@ -142,7 +143,7 @@ async function main() {
       periodType: PeriodType.MONTHLY,
       year: periodYear,
       periodNumber,
-      label: `Meskerem ${periodYear}`,
+      label: `${ETHIOPIAN_MONTHS[periodNumber - 1]} ${periodYear}`,
       startDate: range.start,
       endDate: range.endExclusive,
       dueDate: range.endExclusive,

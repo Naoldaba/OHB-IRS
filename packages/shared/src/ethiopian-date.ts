@@ -20,8 +20,32 @@ export interface CalendarDate {
   day: number; // 1-based
 }
 
-/** Ethiopian month names (transliterated). Month 13 is Pagume (5 or 6 days). */
+/**
+ * Ethiopian month names in Afaan Oromo (Oromia's working language). Listed in
+ * Ethiopian-calendar order; each aligns with the month the Ethiopian one mostly
+ * falls in (Meskerem ≈ September → Fulbaana, …). Month 13 is Qaammee (Pagume,
+ * 5 or 6 days). The former Amharic transliterations are kept in
+ * {@link ETHIOPIAN_MONTHS_AM} for reference / label migration.
+ */
 export const ETHIOPIAN_MONTHS: readonly string[] = [
+  'Fulbaana', // Meskerem
+  'Onkololeessa', // Tikimt
+  'Sadaasa', // Hidar
+  'Muddee', // Tahsas
+  'Amajjii', // Tir
+  'Guraandhala', // Yekatit
+  'Bitooteessa', // Megabit
+  'Eblaa', // Miazia
+  'Caamsaa', // Ginbot
+  'Waxabajjii', // Sene
+  'Adooleessa', // Hamle
+  'Hagayya', // Nehase
+  'Qaammee', // Pagume
+];
+
+/** Former Amharic transliterations, in the same order — kept so stored labels
+ *  generated under the old names can be detected and migrated. */
+export const ETHIOPIAN_MONTHS_AM: readonly string[] = [
   'Meskerem',
   'Tikimt',
   'Hidar',
