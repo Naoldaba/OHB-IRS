@@ -232,11 +232,32 @@ export interface TrendPoint extends ComplianceCounts {
   dueDate: string;
 }
 
+/**
+ * One expected submission slot for a laboratory (Phase 13 lab dashboard): a
+ * report the lab owes for an opened period, with its current state and a link
+ * target (open the submission, or create it when `submissionId` is null).
+ */
+export interface ExpectedSlot {
+  reportTypeId: string;
+  reportTypeName: string;
+  periodId: string;
+  periodLabel: string;
+  year: number;
+  periodNumber: number;
+  startDate: string;
+  dueDate: string;
+  status: ReportStatus | null;
+  submissionId: string | null;
+  overdue: boolean;
+}
+
 export interface DashboardAnalytics {
   generatedAt: string;
   overview: OverviewAnalytics;
   laboratories: LabComplianceRow[];
   trends: TrendPoint[];
+  /** Per-slot "what's due" detail; present only on the lab-scoped dashboard. */
+  expectedSlots?: ExpectedSlot[];
 }
 
 // ---- Notifications (Phase 9) ------------------------------------------------

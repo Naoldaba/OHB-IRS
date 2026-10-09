@@ -76,7 +76,11 @@ export class UploadAttachmentDto {
   sectionKey?: string;
 }
 
-/** Optional query filters for the admin submission list. */
+/** Whitelisted sort orders for the submission list. */
+export const SUBMISSION_SORTS = ['updated', 'period'] as const;
+export type SubmissionSort = (typeof SUBMISSION_SORTS)[number];
+
+/** Optional query filters for the submission list (lab- or admin-scoped). */
 export class ListSubmissionsQueryDto {
   @IsOptional()
   @IsEnum(ReportStatus)
@@ -94,6 +98,14 @@ export class ListSubmissionsQueryDto {
   @IsOptional()
   @IsBooleanString()
   flagged?: string;
+
+  /**
+   * Sort order. `updated` (default) is most-recently-updated first; `period`
+   * is newest reporting period first (year, then period number).
+   */
+  @IsOptional()
+  @IsIn(SUBMISSION_SORTS)
+  sort?: SubmissionSort;
 }
 
 /** Query for `GET /submissions/:id/export`. */

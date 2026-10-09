@@ -64,11 +64,35 @@ export interface TrendPoint extends ComplianceCounts {
   dueDate: string;
 }
 
+/**
+ * One expected submission slot (a report a lab owes for an opened period) with
+ * its current state. Returned only for the lab-scoped dashboard (Phase 13) so a
+ * lab head sees exactly what is due and can jump straight to each report.
+ */
+export interface ExpectedSlot {
+  reportTypeId: string;
+  reportTypeName: string;
+  periodId: string;
+  periodLabel: string;
+  year: number;
+  periodNumber: number;
+  startDate: string;
+  dueDate: string;
+  /** The matching submission's status, or null when nothing has been started. */
+  status: ReportStatus | null;
+  /** The submission to open/continue, or null when it must still be created. */
+  submissionId: string | null;
+  /** Not submitted (missing or still a draft) and past the due date. */
+  overdue: boolean;
+}
+
 export interface DashboardAnalytics {
   generatedAt: string;
   overview: OverviewAnalytics;
   laboratories: LabComplianceRow[];
   trends: TrendPoint[];
+  /** Per-slot "what's due" detail; present only when scoped to one laboratory. */
+  expectedSlots?: ExpectedSlot[];
 }
 
 /** Statuses that mean the report has been submitted at least once. */
@@ -101,14 +125,26 @@ interface MutableCounts {
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The whole Bureau dashboard in one pass. Optionally scoped to one report type. */
-  async dashboard(filter: { reportTypeId?: string; trendLimit?: number } = {}): Promise<DashboardAnalytics> {
+  /**
+   * The whole dashboard in one pass. Optionally scoped to one report type and/or
+   * one laboratory. When `laboratoryId` is set the entire compliance universe is
+   * restricted to that lab (the lab portal view, Phase 13): the expected-slot
+   * computation only resolves that lab, every tally covers it alone, and a
+   * per-slot {@link ExpectedSlot} list ("what's due") is included. Callers that
+   * expose this to a lab user MUST force `laboratoryId = user.laboratoryId`.
+   */
+  async dashboard(
+    filter: { reportTypeId?: string; trendLimit?: number; laboratoryId?: string } = {},
+  ): Promise<DashboardAnalytics> {
     const now = new Date();
     const typeWhere = filter.reportTypeId ? { reportTypeId: filter.reportTypeId } : {};
+    const labScoped = !!filter.laboratoryId;
 
     const [labs, requirements, periods, submissions, reportTypes] = await Promise.all([
       this.prisma.laboratory.findMany({
-        where: { isActive: true },
+        // Lab-scoped: the universe is just the one laboratory, so every
+        // requirement (incl. the all-labs ones) resolves to it and nothing else.
+        where: { isActive: true, ...(filter.laboratoryId ? { id: filter.laboratoryId } : {}) },
         orderBy: { name: 'asc' },
         select: { id: true, name: true, code: true },
       }),
@@ -123,8 +159,9 @@ export class AnalyticsService {
         include: { reportType: { select: { id: true, name: true } } },
       }),
       this.prisma.reportSubmission.findMany({
-        where: { ...typeWhere },
+        where: { ...typeWhere, ...(filter.laboratoryId ? { laboratoryId: filter.laboratoryId } : {}) },
         select: {
+          id: true,
           reportTypeId: true,
           laboratoryId: true,
           reportingPeriodId: true,
@@ -155,16 +192,21 @@ export class AnalyticsService {
       }
     }
 
-    // One submission per (reportType, lab, period); index its status for lookup.
+    // One submission per (reportType, lab, period); index it for lookup.
     const key = (t: string, l: string, p: string) => `${t}|${l}|${p}`;
-    const statusByKey = new Map<string, ReportStatus>();
+    const subByKey = new Map<string, { id: string; status: ReportStatus }>();
     for (const s of submissions) {
-      statusByKey.set(key(s.reportTypeId, s.laboratoryId, s.reportingPeriodId), s.status as ReportStatus);
+      subByKey.set(key(s.reportTypeId, s.laboratoryId, s.reportingPeriodId), {
+        id: s.id,
+        status: s.status as ReportStatus,
+      });
     }
 
     const overview = emptyCounts();
     const perLab = new Map<string, MutableCounts>(labs.map((l) => [l.id, emptyCounts()]));
     const perPeriod: { period: (typeof periods)[number]; counts: MutableCounts }[] = [];
+    // Per-slot detail, collected only for the lab-scoped view.
+    const expectedSlots: ExpectedSlot[] = [];
 
     for (const period of periods) {
       const expectedLabs = labsByType.get(period.reportTypeId);
@@ -172,14 +214,36 @@ export class AnalyticsService {
       const pastDue = now.getTime() > period.dueDate.getTime();
       const pc = emptyCounts();
       for (const labId of expectedLabs) {
-        const status = statusByKey.get(key(period.reportTypeId, labId, period.id)) ?? null;
+        const sub = subByKey.get(key(period.reportTypeId, labId, period.id)) ?? null;
+        const status = sub?.status ?? null;
         classify(overview, status, pastDue);
         const labCounts = perLab.get(labId);
         if (labCounts) classify(labCounts, status, pastDue);
         classify(pc, status, pastDue);
+        if (labScoped) {
+          const notSubmitted = status === null || status === ReportStatus.DRAFT;
+          expectedSlots.push({
+            reportTypeId: period.reportType.id,
+            reportTypeName: period.reportType.name,
+            periodId: period.id,
+            periodLabel: period.label,
+            year: period.year,
+            periodNumber: period.periodNumber,
+            startDate: period.startDate.toISOString(),
+            dueDate: period.dueDate.toISOString(),
+            status,
+            submissionId: sub?.id ?? null,
+            overdue: notSubmitted && pastDue,
+          });
+        }
       }
       perPeriod.push({ period, counts: pc });
     }
+
+    // Most recent (and most actionable) periods first for the "what's due" list.
+    expectedSlots.sort(
+      (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime(),
+    );
 
     const flagged = submissions.filter((s) => Array.isArray(s.flags) && (s.flags as Prisma.JsonArray).length > 0).length;
 
@@ -213,6 +277,7 @@ export class AnalyticsService {
       },
       laboratories,
       trends,
+      ...(labScoped ? { expectedSlots } : {}),
     };
   }
 }

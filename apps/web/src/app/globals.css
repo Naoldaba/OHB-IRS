@@ -806,6 +806,68 @@ h4 {
   border-color: var(--border);
 }
 
+/* ---- Action dot (bubbling red notification dot) ---- */
+.seg-label {
+  display: inline-flex;
+  align-items: center;
+}
+.action-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: var(--status-red);
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.action-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--status-red);
+  animation: action-bubble 1.6s ease-out infinite;
+}
+@keyframes action-bubble {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-dot::after {
+    animation: none;
+  }
+}
+
+/* ---- Sortable table headers ---- */
+.table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.table th.sortable:hover {
+  color: var(--text);
+}
+.table th.sortable .sort-caret {
+  margin-left: 4px;
+  opacity: 0.5;
+}
+.table th.sortable.is-sorted .sort-caret {
+  opacity: 1;
+  color: var(--primary);
+}
+
 /* ---- Callout ---- */
 .callout {
   display: flex;

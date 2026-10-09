@@ -112,9 +112,18 @@ export class SubmissionsService {
       where.laboratoryId = query.laboratoryId;
     }
 
+    // Whitelisted sort: newest reporting period first, or most-recently updated.
+    const orderBy: Prisma.ReportSubmissionOrderByWithRelationInput[] =
+      query.sort === 'period'
+        ? [
+            { reportingPeriod: { year: 'desc' } },
+            { reportingPeriod: { periodNumber: 'desc' } },
+          ]
+        : [{ updatedAt: 'desc' }];
+
     const submissions = await this.prisma.reportSubmission.findMany({
       where,
-      orderBy: { updatedAt: 'desc' },
+      orderBy,
       include: LIST_INCLUDE,
     });
 

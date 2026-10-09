@@ -124,7 +124,7 @@ export function SegmentedToggle<T extends string>({
   onChange,
   disabled,
 }: {
-  options: { value: T; label: string }[];
+  options: { value: T; label: ReactNode }[];
   value: T;
   onChange: (value: T) => void;
   disabled?: boolean;
@@ -146,6 +146,19 @@ export function SegmentedToggle<T extends string>({
       ))}
     </div>
   );
+}
+
+/**
+ * A small red notification dot that "bubbles" — a radiating pulse ring — to draw
+ * attention to action-required items (e.g. the "Needs your action" inbox). When
+ * `count` is given and positive, it's announced to assistive tech.
+ */
+export function ActionDot({ count }: { count?: number }) {
+  const label =
+    typeof count === 'number' && count > 0
+      ? `${count} item${count === 1 ? '' : 's'} need your action`
+      : 'Action required';
+  return <span className="action-dot" role="status" aria-label={label} />;
 }
 
 export function Pill({
