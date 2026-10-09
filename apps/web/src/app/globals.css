@@ -721,6 +721,11 @@ h4 {
   resize: vertical;
   min-height: 90px;
 }
+/* An @mention rendered inside a feedback message (Phase 24). */
+.mention {
+  color: var(--primary-accent);
+  font-weight: 600;
+}
 .input-group {
   position: relative;
 }

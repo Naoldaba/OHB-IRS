@@ -27,7 +27,7 @@ import {
 } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { NotificationsService, type Recipient } from '../notifications/notifications.service';
 import { AuthUser } from '../common/auth-user';
 import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
 import { STORAGE, StorageProvider } from '../storage/storage.provider';
@@ -81,6 +81,30 @@ const LIST_INCLUDE = {
   reportingPeriod: { select: { id: true, label: true, year: true, periodNumber: true, dueDate: true } },
   definitionVersion: { select: { id: true, version: true } },
 } satisfies Prisma.ReportSubmissionInclude;
+
+/** @mention projection: the mentioned user's identity, flattened for the client. */
+const MENTION_SELECT = {
+  mentionedUserId: true,
+  mentionedUser: { select: { id: true, fullName: true } },
+} satisfies Prisma.FeedbackMentionSelect;
+
+/**
+ * Feedback as threads (Phase 7 + 24): roots (oldest first), each with its author,
+ * resolution state, @mentions and its replies (each with author + mentions).
+ * Shared by `getDetail` and `listFeedback` so both return the same shape.
+ */
+const FEEDBACK_THREAD_INCLUDE = {
+  author: { select: { id: true, fullName: true } },
+  resolvedBy: { select: { id: true, fullName: true } },
+  mentions: { select: MENTION_SELECT },
+  replies: {
+    orderBy: { createdAt: 'asc' },
+    include: {
+      author: { select: { id: true, fullName: true } },
+      mentions: { select: MENTION_SELECT },
+    },
+  },
+} satisfies Prisma.FeedbackInclude;
 
 /**
  * Report submission lifecycle — the single enforcement point for the workflow
@@ -146,13 +170,7 @@ export class SubmissionsService {
         feedback: {
           where: { parentId: null },
           orderBy: { createdAt: 'asc' },
-          include: {
-            author: { select: { id: true, fullName: true } },
-            replies: {
-              orderBy: { createdAt: 'asc' },
-              include: { author: { select: { id: true, fullName: true } } },
-            },
-          },
+          include: FEEDBACK_THREAD_INCLUDE,
         },
         versions: { orderBy: { versionNumber: 'asc' } },
       },
@@ -480,6 +498,11 @@ export class SubmissionsService {
       fieldKey = parent.fieldKey ?? undefined;
     }
 
+    // Resolve @mentions to users who are actually authorized to see this
+    // submission — an @mention never leaks the report to someone who could not
+    // otherwise view it. Unauthorized/unknown ids are silently dropped.
+    const mentionTargets = await this.resolveMentions(submission.laboratoryId, dto.mentions);
+
     const feedback = await this.prisma.feedback.create({
       data: {
         submissionId: submission.id,
@@ -489,15 +512,26 @@ export class SubmissionsService {
         sectionKey,
         fieldKey,
         parentId: dto.parentId,
+        mentions: mentionTargets.length
+          ? { create: mentionTargets.map((m) => ({ mentionedUserId: m.id })) }
+          : undefined,
       },
-      include: { author: { select: { id: true, fullName: true } } },
+      include: {
+        author: { select: { id: true, fullName: true } },
+        mentions: { select: MENTION_SELECT },
+      },
     });
     await this.audit.record({
       action: AuditAction.REPORT_FEEDBACK_ADDED,
       actorId: user.id,
       entityType: 'ReportSubmission',
       entityId: submission.id,
-      metadata: { feedbackId: feedback.id, type: feedback.type, parentId: dto.parentId ?? null },
+      metadata: {
+        feedbackId: feedback.id,
+        type: feedback.type,
+        parentId: dto.parentId ?? null,
+        mentionedUserIds: mentionTargets.map((m) => m.id),
+      },
     });
     // Notify the other party in the thread (admin → lab, or lab → admins).
     const enriched = await this.prisma.reportSubmission.findUnique({
@@ -510,8 +544,109 @@ export class SubmissionsService {
         reportingPeriod: { select: { label: true } },
       },
     });
-    await this.notifications.notifyFeedback(enriched ?? submission, user);
+    const notice = enriched ?? submission;
+    await this.notifications.notifyFeedback(notice, user);
+    // Separately ping each @mentioned user (deep-linked to their own portal).
+    await this.notifications.notifyMention(notice, user, mentionTargets);
     return feedback;
+  }
+
+  /**
+   * Resolve a list of candidate @mention user ids to the active users who may
+   * see this submission (all Bureau admins + the owning lab's heads). Anything
+   * else is dropped — the mention list can never widen who learns of the report.
+   */
+  private async resolveMentions(
+    laboratoryId: string,
+    mentionIds: string[] | undefined,
+  ): Promise<Recipient[]> {
+    if (!mentionIds || mentionIds.length === 0) return [];
+    const users = await this.prisma.user.findMany({
+      where: {
+        id: { in: [...new Set(mentionIds)] },
+        isActive: true,
+        OR: [
+          { role: { name: RoleName.BUREAU_ADMIN } },
+          { role: { name: RoleName.REGIONAL_LAB_HEAD }, laboratoryId },
+        ],
+      },
+      select: {
+        id: true,
+        email: true,
+        fullName: true,
+        emailNotifications: true,
+        role: { select: { name: true } },
+      },
+    });
+    return users.map((u) => ({
+      id: u.id,
+      email: u.email,
+      fullName: u.fullName,
+      emailNotifications: u.emailNotifications,
+      role: u.role.name,
+    }));
+  }
+
+  /**
+   * Users who may be @mentioned on this submission: all active Bureau admins and
+   * the owning laboratory's active heads (exactly the viewers `assertAccess`
+   * admits). Caller is access-checked first. Drives the mention autocomplete.
+   */
+  async mentionableUsers(id: string, user: AuthUser) {
+    const submission = await this.load(id);
+    this.assertAccess(submission, user);
+    const users = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { role: { name: RoleName.BUREAU_ADMIN } },
+          { role: { name: RoleName.REGIONAL_LAB_HEAD }, laboratoryId: submission.laboratoryId },
+        ],
+      },
+      select: { id: true, fullName: true, role: { select: { name: true } } },
+      orderBy: { fullName: 'asc' },
+    });
+    return users.map((u) => ({ id: u.id, fullName: u.fullName, role: u.role.name }));
+  }
+
+  /**
+   * Resolve or reopen a feedback thread (Phase 24). Access-scoped like any other
+   * feedback action (admins any lab; a lab head only its own); only a thread
+   * root can be resolved. Resolving hides-but-preserves the thread in the UI —
+   * nothing is deleted. Audited.
+   */
+  async resolveThread(
+    id: string,
+    feedbackId: string,
+    user: AuthUser,
+    resolved: boolean,
+  ) {
+    const submission = await this.load(id);
+    this.assertAccess(submission, user);
+    const root = await this.prisma.feedback.findUnique({ where: { id: feedbackId } });
+    if (!root || root.submissionId !== submission.id) {
+      throw new BadRequestException('Feedback does not belong to this submission');
+    }
+    if (root.parentId) {
+      throw new BadRequestException('Only a thread root can be resolved');
+    }
+    const updated = await this.prisma.feedback.update({
+      where: { id: feedbackId },
+      data: resolved
+        ? { resolvedAt: new Date(), resolvedById: user.id }
+        : { resolvedAt: null, resolvedById: null },
+      include: { resolvedBy: { select: { id: true, fullName: true } } },
+    });
+    await this.audit.record({
+      action: resolved
+        ? AuditAction.REPORT_FEEDBACK_RESOLVED
+        : AuditAction.REPORT_FEEDBACK_REOPENED,
+      actorId: user.id,
+      entityType: 'ReportSubmission',
+      entityId: submission.id,
+      metadata: { feedbackId },
+    });
+    return updated;
   }
 
   /** All feedback for a submission as threads: roots (oldest first), each with
@@ -522,13 +657,7 @@ export class SubmissionsService {
     return this.prisma.feedback.findMany({
       where: { submissionId: id, parentId: null },
       orderBy: { createdAt: 'asc' },
-      include: {
-        author: { select: { id: true, fullName: true } },
-        replies: {
-          orderBy: { createdAt: 'asc' },
-          include: { author: { select: { id: true, fullName: true } } },
-        },
-      },
+      include: FEEDBACK_THREAD_INCLUDE,
     });
   }
 

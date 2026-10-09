@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Send } from 'lucide-react';
 import { ReportStatus, canEditData } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
-import type { Feedback, SaveDraftResponse, SubmissionDetail } from '@/lib/types';
+import type { Feedback, MentionableUser, SaveDraftResponse, SubmissionDetail } from '@/lib/types';
 import { Button, Callout, Card, Spinner, StatusPill } from '@/components/ui';
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { ValidationSummary } from '@/components/report/ValidationSummary';
@@ -44,6 +44,7 @@ export default function LabSubmissionPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [autosave, setAutosave] = useState<AutosaveState>({ state: 'idle' });
+  const [mentionables, setMentionables] = useState<MentionableUser[]>([]);
 
   const editable = !!detail && canEditData(detail.status);
 
@@ -57,6 +58,13 @@ export default function LabSubmissionPage() {
   useEffect(() => {
     load().catch((e) => setLoadError(e instanceof Error ? e.message : 'Failed to load'));
   }, [load]);
+
+  useEffect(() => {
+    api
+      .get<MentionableUser[]>(`/submissions/${id}/mentionable-users`)
+      .then(setMentionables)
+      .catch(() => setMentionables([]));
+  }, [id]);
 
   // Persist the draft and refresh the validator diagnostics. The response's
   // `validation.errors` are non-blocking on a draft PATCH; they drive both the
@@ -176,16 +184,33 @@ export default function LabSubmissionPage() {
     router.push('/lab');
   }
 
-  async function reply(parentId: string, message: string) {
+  async function refreshFeedback() {
+    // Refresh only the feedback so any in-progress draft edits are preserved.
+    const feedback = await api.get<Feedback[]>(`/submissions/${id}/feedback`);
+    setDetail((d) => (d ? { ...d, feedback } : d));
+  }
+
+  async function reply(parentId: string, message: string, mentions: string[]) {
     setBusy(true);
     setActionError(null);
     try {
-      await api.post(`/submissions/${id}/feedback`, { parentId, message });
-      // Refresh only the feedback so any in-progress draft edits are preserved.
-      const feedback = await api.get<Feedback[]>(`/submissions/${id}/feedback`);
-      setDetail((d) => (d ? { ...d, feedback } : d));
+      await api.post(`/submissions/${id}/feedback`, { parentId, message, mentions });
+      await refreshFeedback();
     } catch (err) {
       setActionError(err instanceof ApiError ? err.message : 'Failed to send reply');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resolve(rootId: string, resolved: boolean) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await api.post(`/submissions/${id}/feedback/${rootId}/resolve`, { resolved });
+      await refreshFeedback();
+    } catch (err) {
+      setActionError(err instanceof ApiError ? err.message : 'Failed to update thread');
     } finally {
       setBusy(false);
     }
@@ -274,6 +299,8 @@ export default function LabSubmissionPage() {
             feedback={detail.feedback}
             model={detail.renderModel}
             onReply={reply}
+            onResolve={resolve}
+            users={mentionables}
             busy={busy}
           />
         </Card>

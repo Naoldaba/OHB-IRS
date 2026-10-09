@@ -9,6 +9,7 @@ import { UsersModule } from './users/users.module';
 import { CategoriesModule } from './categories/categories.module';
 import { ReportTypesModule } from './report-types/report-types.module';
 import { DefinitionVersionsModule } from './definition-versions/definition-versions.module';
+import { ReportImportModule } from './report-import/report-import.module';
 import { RulesModule } from './rules/rules.module';
 import { ReportingPeriodsModule } from './reporting-periods/reporting-periods.module';
 import { RequirementsModule } from './requirements/requirements.module';
@@ -32,6 +33,7 @@ import { SessionAuthGuard, RolesGuard } from './common/guards';
     CategoriesModule,
     ReportTypesModule,
     DefinitionVersionsModule,
+    ReportImportModule,
     RulesModule,
     ReportingPeriodsModule,
     RequirementsModule,

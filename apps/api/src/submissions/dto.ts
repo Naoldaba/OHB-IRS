@@ -1,4 +1,7 @@
 import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
   IsBooleanString,
   IsEnum,
   IsIn,
@@ -75,6 +78,24 @@ export class AddFeedbackDto {
   @IsOptional()
   @IsString()
   parentId?: string;
+
+  /**
+   * User ids @mentioned in this message. The server keeps only those authorized
+   * to see the submission and notifies them; unauthorized ids are ignored
+   * (never persisted, never notified). See Phase 24.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  mentions?: string[];
+}
+
+/** Body for `POST /submissions/:id/feedback/:feedbackId/resolve`. */
+export class ResolveFeedbackDto {
+  /** true resolves the thread; false reopens it. */
+  @IsBoolean()
+  resolved: boolean;
 }
 
 /** Body for `POST /submissions/:id/attachments` (multipart; the file rides alongside). */

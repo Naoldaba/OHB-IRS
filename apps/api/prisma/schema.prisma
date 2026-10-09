@@ -73,6 +73,8 @@ model User {
   reviewedSubmissions  ReportSubmission[]   @relation("submissionReviewedBy")
   submittedVersions    SubmissionVersion[]  @relation("versionSubmittedBy")
   feedbacks            Feedback[]           @relation("feedbackAuthor")
+  resolvedFeedbacks    Feedback[]           @relation("feedbackResolvedBy")
+  feedbackMentions     FeedbackMention[]    @relation("feedbackMentionedUser")
   attachments          Attachment[]         @relation("attachmentUploadedBy")
   auditLogs            AuditLog[]           @relation("auditActor")
   createdDefinitionVersions   ReportDefinitionVersion[] @relation("defVersionCreatedBy")
@@ -267,10 +269,33 @@ model Feedback {
   parentId     String?
   parent       Feedback?        @relation("FeedbackThread", fields: [parentId], references: [id], onDelete: Cascade)
   replies      Feedback[]       @relation("FeedbackThread")
+  // Thread resolution (Phase 24). Only meaningful on a thread root. A resolved
+  // thread is hidden-but-preserved in the UI; the records themselves are never
+  // deleted (CLAUDE.md auditability). Reopening clears both fields.
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?            @relation("feedbackResolvedBy", fields: [resolvedById], references: [id])
+  // @mentions captured on this message (Phase 24).
+  mentions     FeedbackMention[]
   createdAt    DateTime         @default(now())
 
   @@index([submissionId])
   @@index([parentId])
+}
+
+/// An @mention of a user inside a feedback message (Phase 24). The mentioned
+/// user is notified and is always someone authorized to see the submission
+/// (enforced server-side when the mention is recorded). Append-only history.
+model FeedbackMention {
+  id              String   @id @default(cuid())
+  feedbackId      String
+  feedback        Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  mentionedUserId String
+  mentionedUser   User     @relation("feedbackMentionedUser", fields: [mentionedUserId], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@unique([feedbackId, mentionedUserId])
+  @@index([mentionedUserId])
 }
 
 model Attachment {

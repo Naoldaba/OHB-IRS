@@ -6,7 +6,15 @@ import { MailService } from '../mail/mail.service';
 import { AuthUser } from '../common/auth-user';
 
 /** A resolved recipient with everything the email fan-out needs. */
-type Recipient = { id: string; email: string; fullName: string; emailNotifications: boolean };
+export type Recipient = {
+  id: string;
+  email: string;
+  fullName: string;
+  emailNotifications: boolean;
+  /** RoleName value — present on @mention targets so the email deep link routes
+   *  to the recipient's own portal. Optional for the workflow emitters. */
+  role?: string;
+};
 
 /** Which portal a recipient uses, so a deep link routes to the right route tree. */
 type Audience = 'admin' | 'lab';
@@ -89,6 +97,44 @@ export class NotificationsService {
     return actor.role === RoleName.BUREAU_ADMIN
       ? this.emitToLab(submission, actor, NotificationType.FEEDBACK_RECEIVED, content)
       : this.emitToAdmins(submission, actor, NotificationType.FEEDBACK_RECEIVED, content);
+  }
+
+  /**
+   * One or more users were @mentioned in a feedback message (Phase 24). Each
+   * recipient has already been resolved to someone authorized to see the
+   * submission; we write one MENTIONED notice each (never the actor) and email
+   * each on their own portal link. Best-effort, like every other emitter.
+   */
+  async notifyMention(submission: SubmissionForNotice, actor: AuthUser, mentioned: Recipient[]) {
+    const targets = mentioned.filter((m) => m.id !== actor.id);
+    if (targets.length === 0) return;
+    const title = 'You were mentioned';
+    const body = `${actor.fullName} mentioned you on ${this.subject(submission)}.`;
+    try {
+      await this.prisma.notification.createMany({
+        data: targets.map((m) => ({
+          recipientId: m.id,
+          type: NotificationType.MENTIONED,
+          title,
+          body,
+          submissionId: submission.id,
+          actorId: actor.id,
+        })),
+      });
+    } catch (err) {
+      this.logger.error('Failed to write MENTIONED notifications', err as Error);
+    }
+    // Each recipient's email link routes to whichever portal their role uses.
+    await Promise.all(
+      targets.map((m) =>
+        this.emailFanout(
+          [m],
+          title,
+          body,
+          this.submissionLink(m.role === RoleName.BUREAU_ADMIN ? 'admin' : 'lab', submission.id),
+        ),
+      ),
+    );
   }
 
   /**

@@ -170,6 +170,12 @@ export interface SubmissionSummary {
   definitionVersion?: { id: string; version: number };
 }
 
+/** A user @mentioned in a feedback message (Phase 24). */
+export interface FeedbackMention {
+  mentionedUserId: string;
+  mentionedUser?: { id: string; fullName: string };
+}
+
 export interface Feedback {
   id: string;
   submissionId: string;
@@ -182,6 +188,18 @@ export interface Feedback {
   author?: { id: string; fullName: string };
   /** Replies, present on thread roots returned by the API. */
   replies?: Feedback[];
+  /** @mentions captured on this message. */
+  mentions?: FeedbackMention[];
+  /** Set (on a thread root) once the thread is resolved; null while open. */
+  resolvedAt?: string | null;
+  resolvedBy?: { id: string; fullName: string } | null;
+}
+
+/** A user who may be @mentioned on a submission (admins + the owning lab's heads). */
+export interface MentionableUser {
+  id: string;
+  fullName: string;
+  role: RoleName;
 }
 
 /** A supporting document attached to a submission (optionally anchored to a section). */

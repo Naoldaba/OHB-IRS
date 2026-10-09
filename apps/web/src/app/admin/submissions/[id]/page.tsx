@@ -5,10 +5,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Flag, MessageSquare, PlayCircle, RotateCcw } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
-import type { SubmissionDetail } from '@/lib/types';
+import type { MentionableUser, SubmissionDetail } from '@/lib/types';
 import { Button, Callout, Card, Field, Pill, Select, Spinner, StatusPill, Textarea } from '@/components/ui';
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
+import { MentionTextarea, extractMentionIds } from '@/components/report/MentionTextarea';
 import { VersionHistory } from '@/components/report/VersionHistory';
 import { SubmissionTimeline } from '@/components/report/SubmissionTimeline';
 import { ExportMenu } from '@/components/report/ExportMenu';
@@ -25,6 +26,7 @@ export default function AdminSubmissionDetail() {
   const [commentAnchor, setCommentAnchor] = useState('');
   const [revision, setRevision] = useState('');
   const [revisionAnchor, setRevisionAnchor] = useState('');
+  const [mentionables, setMentionables] = useState<MentionableUser[]>([]);
 
   const load = useCallback(async () => {
     const d = await api.get<SubmissionDetail>(`/submissions/${id}`);
@@ -34,6 +36,13 @@ export default function AdminSubmissionDetail() {
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, [load]);
+
+  useEffect(() => {
+    api
+      .get<MentionableUser[]>(`/submissions/${id}/mentionable-users`)
+      .then(setMentionables)
+      .catch(() => setMentionables([]));
+  }, [id]);
 
   const anchors = useMemo(() => anchorOptions(detail?.renderModel ?? null), [detail?.renderModel]);
 
@@ -59,8 +68,15 @@ export default function AdminSubmissionDetail() {
   );
 
   const onReply = useCallback(
-    (parentId: string, message: string) =>
-      act(() => api.post(`/submissions/${id}/feedback`, { parentId, message })),
+    (parentId: string, message: string, mentions: string[]) =>
+      act(() => api.post(`/submissions/${id}/feedback`, { parentId, message, mentions })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id],
+  );
+
+  const onResolve = useCallback(
+    (rootId: string, resolved: boolean) =>
+      act(() => api.post(`/submissions/${id}/feedback/${rootId}/resolve`, { resolved })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [id],
   );
@@ -244,14 +260,17 @@ export default function AdminSubmissionDetail() {
                 feedback={detail.feedback}
                 model={detail.renderModel}
                 onReply={onReply}
+                onResolve={onResolve}
+                users={mentionables}
                 busy={busy}
               />
             </div>
             <div className="divider" />
-            <Field label="Add a comment">
-              <Textarea
+            <Field label="Add a comment" hint="Type @ to mention the laboratory or a colleague.">
+              <MentionTextarea
                 value={comment}
-                onChange={(e) => setComment(e.target.value)}
+                onChange={setComment}
+                users={mentionables}
                 placeholder="Leave a note for the laboratory…"
               />
             </Field>
@@ -271,6 +290,7 @@ export default function AdminSubmissionDetail() {
                 act(async () => {
                   await api.post(`/submissions/${id}/feedback`, {
                     message: comment.trim(),
+                    mentions: extractMentionIds(comment, mentionables),
                     ...anchorPayload(commentAnchor),
                   });
                   setComment('');

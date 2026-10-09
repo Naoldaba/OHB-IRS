@@ -25,6 +25,7 @@ import {
   ExportSubmissionQueryDto,
   ListSubmissionsQueryDto,
   RequestRevisionDto,
+  ResolveFeedbackDto,
   UpdateSubmissionDataDto,
   UploadAttachmentDto,
 } from './dto';
@@ -51,6 +52,13 @@ export class SubmissionsController {
   @Get(':id/feedback')
   feedback(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.submissions.listFeedback(id, user);
+  }
+
+  /** Users who may be @mentioned on this submission (admins + the owning lab's
+   *  heads). Access-scoped like any other read. Drives the mention autocomplete. */
+  @Get(':id/mentionable-users')
+  mentionableUsers(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.submissions.mentionableUsers(id, user);
   }
 
   @Get(':id/versions')
@@ -211,5 +219,17 @@ export class SubmissionsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.submissions.addFeedback(id, user, dto);
+  }
+
+  // Resolve / reopen a feedback thread. Either party that can see the submission
+  // may do this (service-scoped); only a thread root can be resolved.
+  @Post(':id/feedback/:feedbackId/resolve')
+  resolveFeedback(
+    @Param('id') id: string,
+    @Param('feedbackId') feedbackId: string,
+    @Body() dto: ResolveFeedbackDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.submissions.resolveThread(id, feedbackId, user, dto.resolved);
   }
 }
