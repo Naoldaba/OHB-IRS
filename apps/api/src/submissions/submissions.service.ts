@@ -301,6 +301,32 @@ export class SubmissionsService {
     const schema = this.schemaFromVersion(activeVersion.fieldSchema);
     if (!schema) throw new BadRequestException('The published definition has no usable schema');
 
+    // Optionally prefill the draft from a previous submission (Phase 16). The
+    // source must be the lab's own and the same report type; its data is
+    // re-shaped to the current published schema so stale/removed fields are
+    // dropped (the validator normalizes to the schema and never invents fields).
+    let initialData = emptySubmissionData(schema);
+    let copiedFromSubmissionId: string | null = null;
+    if (dto.copyFromSubmissionId) {
+      const source = await this.prisma.reportSubmission.findUnique({
+        where: { id: dto.copyFromSubmissionId },
+      });
+      if (!source) {
+        throw new BadRequestException('The report to copy from was not found');
+      }
+      if (source.laboratoryId !== laboratoryId) {
+        throw new ForbiddenException("You can only copy from your own laboratory's reports");
+      }
+      if (source.reportTypeId !== dto.reportTypeId) {
+        throw new BadRequestException('You can only copy from a previous report of the same type');
+      }
+      const { normalized } = validateSubmissionData(schema, source.data, {
+        requireComplete: false,
+      });
+      initialData = normalized;
+      copiedFromSubmissionId = source.id;
+    }
+
     try {
       const created = await this.prisma.reportSubmission.create({
         data: {
@@ -308,7 +334,7 @@ export class SubmissionsService {
           laboratoryId,
           reportingPeriodId: dto.reportingPeriodId,
           status: ReportStatus.DRAFT,
-          data: emptySubmissionData(schema) as Prisma.InputJsonValue,
+          data: initialData as Prisma.InputJsonValue,
           definitionVersionId: activeVersion.id,
           createdById: user.id,
         },
@@ -319,7 +345,12 @@ export class SubmissionsService {
         actorId: user.id,
         entityType: 'ReportSubmission',
         entityId: created.id,
-        metadata: { reportTypeId: dto.reportTypeId, laboratoryId, periodId: dto.reportingPeriodId },
+        metadata: {
+          reportTypeId: dto.reportTypeId,
+          laboratoryId,
+          periodId: dto.reportingPeriodId,
+          copiedFromSubmissionId,
+        },
       });
       return created;
     } catch (e) {

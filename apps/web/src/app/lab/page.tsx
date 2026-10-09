@@ -136,6 +136,7 @@ export default function LabHome() {
       <div className="split">
         <NewSubmissionCard
           types={types}
+          submissions={subs}
           onCreated={(subId) => router.push(`/lab/submissions/${subId}`)}
         />
 
@@ -217,16 +218,24 @@ export default function LabHome() {
   );
 }
 
+/** Rank a submission's reporting period (year, then period number) for "latest" comparisons. */
+function periodRank(s: SubmissionSummary): number {
+  return (s.reportingPeriod?.year ?? 0) * 100 + (s.reportingPeriod?.periodNumber ?? 0);
+}
+
 function NewSubmissionCard({
   types,
+  submissions,
   onCreated,
 }: {
   types: ReportType[];
+  submissions: SubmissionSummary[];
   onCreated: (submissionId: string) => void;
 }) {
   const [reportTypeId, setReportTypeId] = useState('');
   const [periods, setPeriods] = useState<ReportingPeriod[]>([]);
   const [periodId, setPeriodId] = useState('');
+  const [prefill, setPrefill] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -242,6 +251,22 @@ function NewSubmissionCard({
       .catch(() => setPeriods([]));
   }, [reportTypeId]);
 
+  // The most recent earlier submission of the same report type (excluding the
+  // period being created) whose values can seed the new draft (Phase 16).
+  const priorSubmission = useMemo(() => {
+    if (!reportTypeId) return null;
+    const candidates = submissions.filter(
+      (s) => s.reportTypeId === reportTypeId && s.reportingPeriodId !== periodId,
+    );
+    if (candidates.length === 0) return null;
+    return [...candidates].sort((a, b) => periodRank(b) - periodRank(a))[0];
+  }, [submissions, reportTypeId, periodId]);
+
+  // Drop the prefill choice whenever it no longer applies.
+  useEffect(() => {
+    if (!priorSubmission) setPrefill(false);
+  }, [priorSubmission]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -250,6 +275,9 @@ function NewSubmissionCard({
       const created = await api.post<SubmissionSummary>('/submissions', {
         reportTypeId,
         reportingPeriodId: periodId,
+        ...(prefill && priorSubmission
+          ? { copyFromSubmissionId: priorSubmission.id }
+          : {}),
       });
       onCreated(created.id);
     } catch (err) {
@@ -300,6 +328,21 @@ function NewSubmissionCard({
             ))}
           </select>
         </Field>
+        {priorSubmission && (
+          <Field label="Prefill">
+            <label className="checkbox-row" style={{ padding: '9px 0' }}>
+              <input
+                type="checkbox"
+                checked={prefill}
+                onChange={(e) => setPrefill(e.target.checked)}
+              />
+              <span className="text-sm muted">
+                Start from {priorSubmission.reportingPeriod?.label ?? 'last period'}
+                &rsquo;s values
+              </span>
+            </label>
+          </Field>
+        )}
         <Button type="submit" disabled={busy || !reportTypeId || !periodId}>
           <FilePlus2 size={16} /> Create draft
         </Button>

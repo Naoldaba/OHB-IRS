@@ -20,6 +20,16 @@ export class CreateSubmissionDto {
 
   @IsString()
   reportingPeriodId: string;
+
+  /**
+   * Optional: seed the new draft's data from a previous submission's data
+   * (same report type, same laboratory). The server re-shapes the copied data
+   * to the new period's pinned definition version — fields absent from the
+   * current version are dropped; it never invents fields. See Phase 16.
+   */
+  @IsOptional()
+  @IsString()
+  copyFromSubmissionId?: string;
 }
 
 export class UpdateSubmissionDataDto {
