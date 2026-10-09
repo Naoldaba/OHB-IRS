@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { FilePlus2, Pencil, Eye, UploadCloud, ArrowLeft } from 'lucide-react';
+import { FilePlus2, Pencil, Eye, UploadCloud, ArrowLeft, Copy, X } from 'lucide-react';
 import { ReportDefinitionStatus } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
 import type { DefinitionVersionSummary, ReportType } from '@/lib/types';
@@ -12,6 +12,7 @@ import {
   Card,
   DefinitionStatusPill,
   Pill,
+  Select,
   Spinner,
 } from '@/components/ui';
 
@@ -22,6 +23,7 @@ export default function ReportTypeDetailPage() {
   const [versions, setVersions] = useState<DefinitionVersionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showClone, setShowClone] = useState(false);
 
   const reload = useCallback(async () => {
     const [rt, vs] = await Promise.all([
@@ -36,13 +38,13 @@ export default function ReportTypeDetailPage() {
     reload().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, [reload]);
 
-  async function createDraft(cloneFromVersionId?: string) {
+  async function createDraft(body: Record<string, string>) {
     setBusy(true);
     setError(null);
     try {
       const created = await api.post<DefinitionVersionSummary>(
         `/report-types/${id}/definition-versions`,
-        cloneFromVersionId ? { cloneFromVersionId } : {},
+        body,
       );
       router.push(`/admin/report-types/${id}/versions/${created.id}`);
     } catch (err) {
@@ -91,16 +93,35 @@ export default function ReportTypeDetailPage() {
               {reportType.defaultFrequency.toLowerCase()}
             </p>
           </div>
-          <Button
-            onClick={() => createDraft(latest ? latest.id : undefined)}
-            disabled={busy || hasDraft}
-            title={hasDraft ? 'Finish or publish the existing draft first' : undefined}
-          >
-            <FilePlus2 size={16} />
-            {latest ? 'New draft from latest' : 'Start first draft'}
-          </Button>
+          <div className="toolbar">
+            <Button
+              variant="secondary"
+              onClick={() => setShowClone((s) => !s)}
+              disabled={busy || hasDraft}
+              title={hasDraft ? 'Finish or publish the existing draft first' : 'Copy another report’s structure + rules'}
+            >
+              {showClone ? <X size={16} /> : <Copy size={16} />}
+              Start from an existing report
+            </Button>
+            <Button
+              onClick={() => createDraft(latest ? { cloneFromVersionId: latest.id } : {})}
+              disabled={busy || hasDraft}
+              title={hasDraft ? 'Finish or publish the existing draft first' : undefined}
+            >
+              <FilePlus2 size={16} />
+              {latest ? 'New draft from latest' : 'Start first draft'}
+            </Button>
+          </div>
         </div>
       </div>
+
+      {showClone && !hasDraft && (
+        <ClonePicker
+          currentReportTypeId={id}
+          busy={busy}
+          onClone={(versionId) => createDraft({ cloneFromDefinitionVersionId: versionId })}
+        />
+      )}
 
       {error && (
         <div style={{ marginBottom: 16 }}>
@@ -187,5 +208,111 @@ export default function ReportTypeDetailPage() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * Picker for "start from an existing report" (Phase 19): choose another report
+ * type and one of its definition versions, and clone that version's structure
+ * **and** business rules into a new DRAFT of this report type. The copy is fully
+ * editable; the source version is untouched.
+ */
+function ClonePicker({
+  currentReportTypeId,
+  busy,
+  onClone,
+}: {
+  currentReportTypeId: string;
+  busy: boolean;
+  onClone: (versionId: string) => void;
+}) {
+  const [reportTypes, setReportTypes] = useState<ReportType[] | null>(null);
+  const [sourceTypeId, setSourceTypeId] = useState('');
+  const [sourceVersions, setSourceVersions] = useState<DefinitionVersionSummary[] | null>(null);
+  const [versionId, setVersionId] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<ReportType[]>('/report-types')
+      .then((all) => setReportTypes(all.filter((rt) => rt.id !== currentReportTypeId)))
+      .catch(() => setReportTypes([]));
+  }, [currentReportTypeId]);
+
+  useEffect(() => {
+    setSourceVersions(null);
+    setVersionId('');
+    if (!sourceTypeId) return;
+    api
+      .get<DefinitionVersionSummary[]>(`/report-types/${sourceTypeId}/definition-versions`)
+      .then((vs) => {
+        setSourceVersions(vs);
+        // Default to the active published version, else the newest.
+        const published = vs.find((v) => v.status === ReportDefinitionStatus.PUBLISHED);
+        setVersionId((published ?? vs[0])?.id ?? '');
+      })
+      .catch((e) => setLoadError(e instanceof ApiError ? e.message : 'Failed to load versions'));
+  }, [sourceTypeId]);
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <Card
+        title="Start from an existing report"
+        desc="Copy another report’s field structure and its business rules into a new editable draft of this report. The source is not changed."
+      >
+        {reportTypes && reportTypes.length === 0 ? (
+          <Callout>There are no other reports to copy from yet.</Callout>
+        ) : (
+          <div className="grid grid--2" style={{ gap: 12, alignItems: 'end' }}>
+            <div>
+              <label className="micro-label" htmlFor="clone-src">Source report</label>
+              <Select
+                id="clone-src"
+                value={sourceTypeId}
+                onChange={(e) => setSourceTypeId(e.target.value)}
+              >
+                <option value="">Choose a report…</option>
+                {(reportTypes ?? []).map((rt) => (
+                  <option key={rt.id} value={rt.id}>
+                    {rt.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="micro-label" htmlFor="clone-ver">Version</label>
+              <Select
+                id="clone-ver"
+                value={versionId}
+                onChange={(e) => setVersionId(e.target.value)}
+                disabled={!sourceVersions || sourceVersions.length === 0}
+              >
+                {!sourceVersions ? (
+                  <option value="">{sourceTypeId ? 'Loading…' : 'Choose a report first'}</option>
+                ) : sourceVersions.length === 0 ? (
+                  <option value="">No versions to copy</option>
+                ) : (
+                  sourceVersions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      v{v.version} · {v.status.toLowerCase()} · {v._count?.rules ?? 0} rules
+                    </option>
+                  ))
+                )}
+              </Select>
+            </div>
+          </div>
+        )}
+        {loadError && (
+          <div style={{ marginTop: 12 }}>
+            <Callout tone="danger">{loadError}</Callout>
+          </div>
+        )}
+        <div className="toolbar" style={{ marginTop: 14 }}>
+          <Button onClick={() => onClone(versionId)} disabled={busy || !versionId}>
+            <Copy size={15} /> Create draft from this
+          </Button>
+        </div>
+      </Card>
+    </div>
   );
 }

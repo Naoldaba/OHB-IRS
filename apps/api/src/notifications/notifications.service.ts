@@ -2,7 +2,17 @@ import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nest
 import { Prisma } from '@prisma/client';
 import { NotificationType, RoleName } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { AuthUser } from '../common/auth-user';
+
+/** A resolved recipient with everything the email fan-out needs. */
+type Recipient = { id: string; email: string; fullName: string; emailNotifications: boolean };
+
+/** Which portal a recipient uses, so a deep link routes to the right route tree. */
+type Audience = 'admin' | 'lab';
+
+/** Global off-switch for the email channel (in-app delivery is unaffected). */
+const EMAIL_CHANNEL_ENABLED = process.env.EMAIL_NOTIFICATIONS !== 'off';
 
 /** The enriched submission shape the emit helpers rely on for message text. */
 type SubmissionForNotice = {
@@ -24,7 +34,10 @@ type SubmissionForNotice = {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mail: MailService,
+  ) {}
 
   // ---- Event emitters (called by the submissions workflow) ------------------
 
@@ -102,7 +115,7 @@ export class NotificationsService {
         laboratoryId: params.laboratoryId,
         role: { name: RoleName.REGIONAL_LAB_HEAD },
       },
-      select: { id: true },
+      select: { id: true, email: true, fullName: true, emailNotifications: true },
     });
     if (heads.length === 0) return 0;
     await this.prisma.notification.createMany({
@@ -117,6 +130,10 @@ export class NotificationsService {
         actorId: null,
       })),
     });
+    // A reminder with no submission yet deep-links to the lab dashboard.
+    const base = this.mail.webBaseUrl.replace(/\/$/, '');
+    const link = params.submissionId ? `${base}/lab/submissions/${params.submissionId}` : `${base}/lab`;
+    await this.emailFanout(heads, params.title, params.body, link);
     return heads.length;
   }
 
@@ -130,9 +147,9 @@ export class NotificationsService {
   ) {
     const admins = await this.prisma.user.findMany({
       where: { isActive: true, role: { name: RoleName.BUREAU_ADMIN } },
-      select: { id: true },
+      select: { id: true, email: true, fullName: true, emailNotifications: true },
     });
-    return this.write(admins, submission, actor, type, content);
+    return this.write(admins, 'admin', submission, actor, type, content);
   }
 
   private async emitToLab(
@@ -147,36 +164,70 @@ export class NotificationsService {
         laboratoryId: submission.laboratoryId,
         role: { name: RoleName.REGIONAL_LAB_HEAD },
       },
-      select: { id: true },
+      select: { id: true, email: true, fullName: true, emailNotifications: true },
     });
-    return this.write(heads, submission, actor, type, content);
+    return this.write(heads, 'lab', submission, actor, type, content);
   }
 
   private async write(
-    recipients: { id: string }[],
+    recipients: Recipient[],
+    audience: Audience,
     submission: SubmissionForNotice,
     actor: AuthUser,
     type: NotificationType,
     content: { title: string; body: string },
   ) {
     // Never notify the person who triggered the event.
-    const rows = recipients
-      .filter((r) => r.id !== actor.id)
-      .map((r) => ({
-        recipientId: r.id,
-        type,
-        title: content.title,
-        body: content.body,
-        submissionId: submission.id,
-        actorId: actor.id,
-      }));
-    if (rows.length === 0) return;
+    const targets = recipients.filter((r) => r.id !== actor.id);
+    if (targets.length === 0) return;
     try {
-      await this.prisma.notification.createMany({ data: rows });
+      await this.prisma.notification.createMany({
+        data: targets.map((r) => ({
+          recipientId: r.id,
+          type,
+          title: content.title,
+          body: content.body,
+          submissionId: submission.id,
+          actorId: actor.id,
+        })),
+      });
     } catch (err) {
       // Best-effort: a notification failure must not break the originating action.
       this.logger.error(`Failed to write ${type} notifications`, err as Error);
     }
+    // Fan out to email as a separate best-effort side effect (Phase 19).
+    const link = this.submissionLink(audience, submission.id);
+    await this.emailFanout(targets, content.title, content.body, link);
+  }
+
+  /**
+   * Email the in-app notice to each recipient who has the email channel on, as a
+   * best-effort side effect (Phase 19). Never throws — a failed send is logged
+   * and the in-app notification stands on its own. Gated globally by
+   * EMAIL_NOTIFICATIONS and per-user by the `emailNotifications` preference.
+   */
+  private async emailFanout(
+    recipients: Recipient[],
+    title: string,
+    body: string,
+    link?: string,
+  ): Promise<void> {
+    if (!EMAIL_CHANNEL_ENABLED) return;
+    const opted = recipients.filter((r) => r.emailNotifications && r.email);
+    await Promise.all(
+      opted.map((r) =>
+        this.mail.sendNotification(r.email, title, body, link).catch((err) => {
+          this.logger.warn(`Failed to email ${title} to ${r.email}: ${(err as Error).message}`);
+        }),
+      ),
+    );
+  }
+
+  /** Absolute deep link to a submission in the recipient's portal, if we have one. */
+  private submissionLink(audience: Audience, submissionId: string | null): string | undefined {
+    if (!submissionId) return undefined;
+    const base = this.mail.webBaseUrl.replace(/\/$/, '');
+    return `${base}/${audience === 'admin' ? 'admin' : 'lab'}/submissions/${submissionId}`;
   }
 
   /** "Monthly Lab Report for Fulbaana 2017" — or possessive-friendly form. */

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
@@ -25,6 +25,12 @@ export class UpdateProfileDto {
   @MinLength(1)
   @MaxLength(120)
   fullName: string;
+}
+
+/** Self-service notification preferences. */
+export class UpdateNotificationPreferenceDto {
+  @IsBoolean()
+  emailNotifications: boolean;
 }
 
 export class ForgotPasswordDto {

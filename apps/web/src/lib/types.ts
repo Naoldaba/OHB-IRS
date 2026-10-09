@@ -32,6 +32,8 @@ export interface AuthUser {
   mustChangePassword: boolean;
   /** When true, the account has TOTP two-step verification enabled. */
   twoFactorEnabled: boolean;
+  /** When true, in-app notifications are also delivered to the user by email. */
+  emailNotifications: boolean;
 }
 
 /** Current 2FA state for the signed-in user (`GET /auth/2fa/status`). */
@@ -269,6 +271,13 @@ export interface ExpectedSlot {
   overdue: boolean;
 }
 
+/** Anonymized standing of a lab against the region (lab-scoped dashboard only). */
+export interface RegionalBenchmark {
+  regionalMedianComplianceRate: number;
+  regionalRank: number;
+  totalRankedLabs: number;
+}
+
 export interface DashboardAnalytics {
   generatedAt: string;
   overview: OverviewAnalytics;
@@ -276,6 +285,8 @@ export interface DashboardAnalytics {
   trends: TrendPoint[];
   /** Per-slot "what's due" detail; present only on the lab-scoped dashboard. */
   expectedSlots?: ExpectedSlot[];
+  /** Anonymized regional comparison; present only on the lab-scoped dashboard. */
+  benchmark?: RegionalBenchmark | null;
 }
 
 // ---- Notifications (Phase 9) ------------------------------------------------

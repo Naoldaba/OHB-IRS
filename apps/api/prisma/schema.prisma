@@ -44,6 +44,9 @@ model User {
   // null when none is set. See the storage provider abstraction.
   avatarUrl    String?
   isActive     Boolean     @default(true)
+  // Self-service preference: when true (the default) the user also receives
+  // their in-app notifications by email. In-app delivery is unaffected by this.
+  emailNotifications Boolean @default(true)
   // Set when an admin creates the account or resets the password; forces a
   // self-service change at next login before any other action is permitted.
   mustChangePassword Boolean @default(false)

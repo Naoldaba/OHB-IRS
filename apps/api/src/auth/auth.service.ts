@@ -209,6 +209,7 @@ export class AuthService {
     avatarUrl: string | null;
     mustChangePassword: boolean;
     twoFactorEnabled: boolean;
+    emailNotifications: boolean;
   }): AuthUser {
     return {
       id: user.id,
@@ -219,7 +220,31 @@ export class AuthService {
       avatarUrl: user.avatarUrl,
       mustChangePassword: user.mustChangePassword,
       twoFactorEnabled: user.twoFactorEnabled,
+      emailNotifications: user.emailNotifications,
     };
+  }
+
+  /**
+   * Self-service notification preference: toggle whether the user also receives
+   * their in-app notifications by email. In-app delivery is unaffected.
+   */
+  async updateNotificationPreference(
+    userId: string,
+    emailNotifications: boolean,
+  ): Promise<AuthUser> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailNotifications },
+      include: { role: true },
+    });
+    await this.audit.record({
+      action: AuditAction.USER_UPDATED,
+      actorId: userId,
+      entityType: 'User',
+      entityId: userId,
+      metadata: { self: true, emailNotifications },
+    });
+    return this.toAuthUser(user);
   }
 
   /**

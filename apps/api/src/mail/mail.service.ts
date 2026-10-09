@@ -63,6 +63,27 @@ export class MailService implements OnModuleInit {
     });
   }
 
+  /**
+   * A notification email mirroring an in-app notice (Phase 19). Best-effort: the
+   * caller treats a send failure as non-fatal. `link` is an absolute URL to the
+   * related submission or dashboard when one applies.
+   */
+  async sendNotification(to: string, title: string, body: string, link?: string): Promise<void> {
+    const text =
+      `${body}\n\n` +
+      (link ? `Open it here:\n${link}\n\n` : '') +
+      `— OHB Integrated Report System\n` +
+      `You are receiving this because email notifications are on for your account. ` +
+      `You can turn them off under your profile.`;
+    const html =
+      `<p>${escapeHtml(body)}</p>` +
+      (link ? `<p><a href="${escapeHtml(link)}">Open it in the reporting system</a></p>` : '') +
+      `<hr/><p style="color:#64748b;font-size:12px">OHB Integrated Report System — ` +
+      `you are receiving this because email notifications are on for your account. ` +
+      `You can turn them off under your profile.</p>`;
+    await this.send({ to, subject: `${title} · OHB Reporting`, text, html });
+  }
+
   /** Password-reset email containing a time-limited link to the reset page. */
   async sendPasswordReset(to: string, link: string, expiresInMinutes: number): Promise<void> {
     const subject = 'Reset your OHB Reporting System password';

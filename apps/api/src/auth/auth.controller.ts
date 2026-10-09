@@ -32,6 +32,7 @@ import {
   LoginDto,
   ResetPasswordDto,
   TwoFactorCodeDto,
+  UpdateNotificationPreferenceDto,
   UpdateProfileDto,
 } from './dto';
 
@@ -153,6 +154,15 @@ export class AuthController {
     @CurrentUser() user: AuthUser,
   ): Promise<AuthUser> {
     return this.auth.updateProfile(user.id, dto.fullName);
+  }
+
+  /** Self-service: toggle whether notifications are also emailed to the user. */
+  @Patch('notification-preferences')
+  updateNotificationPreference(
+    @Body() dto: UpdateNotificationPreferenceDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<AuthUser> {
+    return this.auth.updateNotificationPreference(user.id, dto.emailNotifications);
   }
 
   /** Self-service: upload/replace the signed-in user's profile picture. */

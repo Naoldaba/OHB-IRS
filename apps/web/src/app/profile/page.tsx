@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Check, Lock, Mail, Trash2 } from 'lucide-react';
+import { Bell, Camera, Check, Lock, Mail, Trash2 } from 'lucide-react';
 import { RoleName } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
 import type { AuthUser } from '@/lib/types';
-import { Avatar, Button, Callout, Card, Field, Spinner } from '@/components/ui';
+import { Avatar, Button, Callout, Card, Field, SegmentedToggle, Spinner } from '@/components/ui';
 import { TwoFactorCard } from '@/components/TwoFactorCard';
 
 const ROLE_LABEL: Record<RoleName, string> = {
@@ -43,6 +43,7 @@ export default function ProfilePage() {
         </div>
         <div className="stack" style={{ gap: 18 }}>
           <PasswordCard />
+          <NotificationPreferencesCard user={user} refresh={refresh} />
           <TwoFactorCard refresh={refresh} />
         </div>
       </div>
@@ -236,6 +237,63 @@ function NameCard({
           {busy ? 'Saving…' : saved && !dirty ? 'Saved' : 'Save name'}
         </Button>
       </form>
+    </Card>
+  );
+}
+
+/** Toggle whether in-app notifications are also delivered by email (Phase 19). */
+function NotificationPreferencesCard({
+  user,
+  refresh,
+}: {
+  user: AuthUser;
+  refresh: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function set(emailNotifications: boolean) {
+    if (emailNotifications === user.emailNotifications || busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await api.patch('/auth/notification-preferences', { emailNotifications });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save your preference.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card
+      title={
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Bell size={16} /> Email notifications
+        </span>
+      }
+      desc="You always receive notifications in the app. Choose whether they are also emailed to you."
+    >
+      <div className="toolbar" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+        <span className="text-sm muted">Send me email for new notifications</span>
+        <SegmentedToggle
+          value={user.emailNotifications ? 'on' : 'off'}
+          disabled={busy}
+          onChange={(v) => set(v === 'on')}
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+        />
+      </div>
+      {error && (
+        <div style={{ marginTop: 12 }}>
+          <Callout tone="danger" title="Could not save">
+            {error}
+          </Callout>
+        </div>
+      )}
     </Card>
   );
 }

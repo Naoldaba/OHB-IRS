@@ -11,4 +11,6 @@ export interface AuthUser {
   mustChangePassword: boolean;
   /** When true, the account has TOTP two-step verification enabled. */
   twoFactorEnabled: boolean;
+  /** When true, in-app notifications are also delivered to the user by email. */
+  emailNotifications: boolean;
 }

@@ -86,6 +86,20 @@ export interface ExpectedSlot {
   overdue: boolean;
 }
 
+/**
+ * Anonymized standing of one laboratory against the region (Phase 19). Carries
+ * only aggregates — a median rate and an ordinal rank — so no other laboratory's
+ * identity or figures are ever exposed to a lab user.
+ */
+export interface RegionalBenchmark {
+  /** Median compliance rate across all labs that have expectations, 0..1. */
+  regionalMedianComplianceRate: number;
+  /** This lab's rank by compliance rate, 1 = best. */
+  regionalRank: number;
+  /** How many labs are ranked (those with at least one expected submission). */
+  totalRankedLabs: number;
+}
+
 export interface DashboardAnalytics {
   generatedAt: string;
   overview: OverviewAnalytics;
@@ -93,6 +107,8 @@ export interface DashboardAnalytics {
   trends: TrendPoint[];
   /** Per-slot "what's due" detail; present only when scoped to one laboratory. */
   expectedSlots?: ExpectedSlot[];
+  /** Anonymized regional comparison; present only on the lab-scoped dashboard. */
+  benchmark?: RegionalBenchmark | null;
 }
 
 /**
@@ -229,6 +245,11 @@ export class AnalyticsService {
       laboratoryCode: l.code,
     }));
 
+    // Anonymized regional comparison for the lab-scoped view only.
+    const benchmark = labScoped
+      ? await this.regionalBenchmark(filter.laboratoryId!, filter.reportTypeId, now)
+      : undefined;
+
     return {
       generatedAt: now.toISOString(),
       overview: {
@@ -239,7 +260,64 @@ export class AnalyticsService {
       },
       laboratories,
       trends,
-      ...(labScoped ? { expectedSlots } : {}),
+      ...(labScoped ? { expectedSlots, benchmark } : {}),
+    };
+  }
+
+  /**
+   * Where one laboratory stands against the region, as anonymized aggregates
+   * only (Phase 19). Reuses the shared compliance derivation across **all** labs
+   * (optionally narrowed to one report type), computes each lab's compliance rate
+   * over its expected slots, and returns the regional median plus the target
+   * lab's ordinal rank. Never returns any other lab's name or figures. Returns
+   * null when the target lab has no expectations (nothing to compare).
+   */
+  private async regionalBenchmark(
+    laboratoryId: string,
+    reportTypeId: string | undefined,
+    now: Date,
+  ): Promise<RegionalBenchmark | null> {
+    // Unscoped by lab so every laboratory is in the comparison set.
+    const { labs, labsByType, periods, subByKey } = await this.loadComplianceData(
+      { reportTypeId },
+      now,
+    );
+
+    const perLab = new Map<string, { expected: number; submitted: number }>(
+      labs.map((l) => [l.id, { expected: 0, submitted: 0 }]),
+    );
+    for (const period of periods) {
+      const expectedLabs = labsByType.get(period.reportTypeId);
+      if (!expectedLabs || expectedLabs.size === 0) continue;
+      for (const labId of expectedLabs) {
+        const acc = perLab.get(labId);
+        if (!acc) continue;
+        acc.expected += 1;
+        const status = subByKey.get(slotKey(period.reportTypeId, labId, period.id))?.status ?? null;
+        if (status !== null && status !== ReportStatus.DRAFT && SUBMITTED_STATUSES.has(status)) {
+          acc.submitted += 1;
+        }
+      }
+    }
+
+    // Only labs that actually owe something are ranked.
+    const rated = [...perLab.entries()]
+      .filter(([, c]) => c.expected > 0)
+      .map(([id, c]) => ({ id, rate: c.submitted / c.expected }));
+    const target = rated.find((r) => r.id === laboratoryId);
+    if (!target || rated.length === 0) return null;
+
+    const rates = rated.map((r) => r.rate).sort((a, b) => a - b);
+    const mid = Math.floor(rates.length / 2);
+    const median = rates.length % 2 === 0 ? (rates[mid - 1] + rates[mid]) / 2 : rates[mid];
+
+    // Rank 1 = best; ties share the better rank (standard competition ranking).
+    const rank = rated.filter((r) => r.rate > target.rate).length + 1;
+
+    return {
+      regionalMedianComplianceRate: median,
+      regionalRank: rank,
+      totalRankedLabs: rated.length,
     };
   }
 

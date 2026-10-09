@@ -11,10 +11,17 @@ import {
   FilePlus2,
   RotateCcw,
 } from 'lucide-react';
+import { Award } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
-import type { ComplianceCounts, DashboardAnalytics, ExpectedSlot } from '@/lib/types';
+import type {
+  ComplianceCounts,
+  DashboardAnalytics,
+  ExpectedSlot,
+  RegionalBenchmark,
+} from '@/lib/types';
 import { Button, Callout, Card, Spinner, StatusPill } from '@/components/ui';
+import { AnalyticsExport } from '@/components/AnalyticsExport';
 
 /**
  * Lab compliance dashboard (Phase 13) — the lab head's sense of *obligation*.
@@ -105,6 +112,10 @@ function Ready({
 
   return (
     <div style={{ marginBottom: 20 }}>
+      <div className="toolbar" style={{ justifyContent: 'flex-end', marginBottom: 10 }}>
+        <AnalyticsExport basePath="/analytics/my-lab/export" />
+      </div>
+      {data.benchmark && <BenchmarkLine benchmark={data.benchmark} rate={overview.complianceRate} />}
       <div className="kpi-row">
         <Kpi
           icon={<CheckCircle2 size={15} />}
@@ -162,6 +173,34 @@ function Ready({
       >
         <Trend data={data} />
       </Card>
+    </div>
+  );
+}
+
+/**
+ * One anonymized line placing this lab against the region (Phase 19). Shows only
+ * aggregates the API returns — the regional median and this lab's rank — never
+ * another laboratory's name or figures.
+ */
+function BenchmarkLine({ benchmark, rate }: { benchmark: RegionalBenchmark; rate: number }) {
+  const delta = Math.round((rate - benchmark.regionalMedianComplianceRate) * 100);
+  const standing =
+    delta > 0 ? `${delta} pts above` : delta < 0 ? `${Math.abs(delta)} pts below` : 'level with';
+  return (
+    <div
+      className="callout"
+      style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}
+      role="note"
+    >
+      <Award size={18} style={{ color: 'var(--primary-accent)', flexShrink: 0 }} />
+      <span className="text-sm">
+        Your compliance is <b>{pct(rate)}</b> — {standing} the regional median of{' '}
+        <b>{pct(benchmark.regionalMedianComplianceRate)}</b>. You rank{' '}
+        <b>
+          {benchmark.regionalRank} of {benchmark.totalRankedLabs}
+        </b>{' '}
+        laboratories.
+      </span>
     </div>
   );
 }

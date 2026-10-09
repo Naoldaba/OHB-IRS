@@ -10,10 +10,20 @@ export class CreateDefinitionVersionDto {
   @IsObject()
   fieldSchema?: Record<string, unknown>;
 
-  /** Clone the schema from this existing version of the same report type. */
+  /** Clone the schema (and its rules) from this existing version of the same report type. */
   @IsOptional()
   @IsString()
   cloneFromVersionId?: string;
+
+  /**
+   * Clone the schema and attached rules from a version of ANY report type
+   * (Phase 19) — "start from an existing report". Takes precedence over
+   * cloneFromVersionId. An explicit `fieldSchema` still overrides the copied one
+   * (and then no rules are copied, since they may no longer match).
+   */
+  @IsOptional()
+  @IsString()
+  cloneFromDefinitionVersionId?: string;
 }
 
 export class UpdateSchemaDto {

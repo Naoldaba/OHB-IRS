@@ -20,6 +20,7 @@ import type {
   ReportType,
 } from '@/lib/types';
 import { Callout, Card, Select, Spinner } from '@/components/ui';
+import { AnalyticsExport } from '@/components/AnalyticsExport';
 
 /** Compliance target the Bureau measures labs against (a policy constant, not data). */
 const REGIONAL_MANDATE = 0.9;
@@ -76,19 +77,22 @@ export default function AdminAnalyticsPage() {
               reporting requirements, open periods and actual submissions.
             </p>
           </div>
-          <div style={{ minWidth: 240 }}>
-            <Select
-              value={reportTypeId}
-              onChange={(e) => setReportTypeId(e.target.value)}
-              aria-label="Filter by report type"
-            >
-              <option value="">All report types</option>
-              {(reportTypes ?? []).map((rt) => (
-                <option key={rt.id} value={rt.id}>
-                  {rt.name}
-                </option>
-              ))}
-            </Select>
+          <div className="toolbar" style={{ gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ minWidth: 240 }}>
+              <Select
+                value={reportTypeId}
+                onChange={(e) => setReportTypeId(e.target.value)}
+                aria-label="Filter by report type"
+              >
+                <option value="">All report types</option>
+                {(reportTypes ?? []).map((rt) => (
+                  <option key={rt.id} value={rt.id}>
+                    {rt.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <AnalyticsExport basePath="/analytics/dashboard/export" reportTypeId={reportTypeId} disabled={!data} />
           </div>
         </div>
       </div>

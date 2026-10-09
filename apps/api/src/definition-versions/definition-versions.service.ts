@@ -64,16 +64,26 @@ export class DefinitionVersionsService {
   async create(reportTypeId: string, dto: CreateDefinitionVersionDto, actorId: string) {
     await this.requireReportType(reportTypeId);
 
-    let fieldSchema: Prisma.InputJsonValue = {};
-    if (dto.cloneFromVersionId) {
-      const source = await this.get(reportTypeId, dto.cloneFromVersionId);
-      fieldSchema = source.fieldSchema as Prisma.InputJsonValue;
+    // Resolve a clone source. A cross-type clone (Phase 19) takes precedence over
+    // the same-type clone and may reference a version of any report type.
+    let source: { id: string; fieldSchema: Prisma.JsonValue } | null = null;
+    if (dto.cloneFromDefinitionVersionId) {
+      source = await this.getAnyType(dto.cloneFromDefinitionVersionId);
+    } else if (dto.cloneFromVersionId) {
+      source = await this.get(reportTypeId, dto.cloneFromVersionId);
     }
+
+    let fieldSchema: Prisma.InputJsonValue = source
+      ? (source.fieldSchema as Prisma.InputJsonValue)
+      : {};
+    // An explicit schema overrides a clone source — and then we do not carry the
+    // source's rules over, since they reference the cloned structure.
+    const schemaOverridden = !!dto.fieldSchema;
     if (dto.fieldSchema) {
-      // An explicit schema overrides a clone source.
       this.assertValidSchema(dto.fieldSchema);
       fieldSchema = dto.fieldSchema as Prisma.InputJsonValue;
     }
+    const copyRules = !!source && !schemaOverridden;
 
     // Next version number for this report type.
     const last = await this.prisma.reportDefinitionVersion.findFirst({
@@ -93,14 +103,61 @@ export class DefinitionVersionsService {
         createdById: actorId,
       },
     });
+
+    // Copy the source version's business rules into the new draft (editable).
+    let copiedRules = 0;
+    if (copyRules && source) {
+      copiedRules = await this.copyRules(source.id, created.id);
+    }
+
     await this.audit.record({
       action: AuditAction.DEFINITION_VERSION_CREATED,
       actorId,
       entityType: 'ReportDefinitionVersion',
       entityId: created.id,
-      metadata: { reportTypeId, version },
+      metadata: {
+        reportTypeId,
+        version,
+        ...(source ? { clonedFromVersionId: source.id, copiedRules } : {}),
+        ...(dto.cloneFromDefinitionVersionId ? { crossReportType: true } : {}),
+      },
     });
     return created;
+  }
+
+  /** Load a definition version by id regardless of its report type (for cross-type clone). */
+  private async getAnyType(versionId: string) {
+    const version = await this.prisma.reportDefinitionVersion.findUnique({
+      where: { id: versionId },
+      select: { id: true, fieldSchema: true },
+    });
+    if (!version) throw new NotFoundException('Source definition version not found');
+    return version;
+  }
+
+  /** Duplicate every business rule from one version onto another. Returns the count. */
+  private async copyRules(fromVersionId: string, toVersionId: string): Promise<number> {
+    const rules = await this.prisma.businessRule.findMany({
+      where: { definitionVersionId: fromVersionId },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    });
+    if (rules.length === 0) return 0;
+    await this.prisma.businessRule.createMany({
+      data: rules.map((r) => ({
+        definitionVersionId: toVersionId,
+        key: r.key,
+        name: r.name,
+        description: r.description,
+        kind: r.kind,
+        severity: r.severity,
+        condition: r.condition as Prisma.InputJsonValue,
+        action: r.action as Prisma.InputJsonValue,
+        enabled: r.enabled,
+        order: r.order,
+        templateId: r.templateId,
+      })),
+    });
+    return rules.length;
   }
 
   async updateSchema(
