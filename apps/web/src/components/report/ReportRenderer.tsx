@@ -121,6 +121,7 @@ function MatrixRenderer({
                   return (
                     <td key={cell.path}>
                       <input
+                        id={errKey}
                         type="number"
                         min={0}
                         step={1}

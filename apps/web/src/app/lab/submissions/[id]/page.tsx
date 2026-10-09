@@ -8,17 +8,27 @@ import { api, ApiError } from '@/lib/api';
 import type { Feedback, SaveDraftResponse, SubmissionDetail } from '@/lib/types';
 import { Button, Callout, Card, Spinner, StatusPill } from '@/components/ui';
 import { ReportRenderer } from '@/components/report/ReportRenderer';
+import { ValidationSummary } from '@/components/report/ValidationSummary';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
 import { ExportMenu } from '@/components/report/ExportMenu';
 import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
 import { sectionOptions } from '@/components/report/anchors';
 
+const AUTOSAVE_DELAY_MS = 1500;
+const LEAVE_PROMPT = 'You have unsaved changes. Leave this report and discard them?';
+
 function toErrorMap(errors: { path: string; message: string }[]): Record<string, string> {
   const map: Record<string, string> = {};
   for (const e of errors) map[e.path] = e.message;
   return map;
 }
+
+type AutosaveState =
+  | { state: 'idle' }
+  | { state: 'saving' }
+  | { state: 'saved'; ok: boolean }
+  | { state: 'error' };
 
 export default function LabSubmissionPage() {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +42,9 @@ export default function LabSubmissionPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [autosave, setAutosave] = useState<AutosaveState>({ state: 'idle' });
+
+  const editable = !!detail && canEditData(detail.status);
 
   const load = useCallback(async () => {
     const d = await api.get<SubmissionDetail>(`/submissions/${id}`);
@@ -44,6 +57,68 @@ export default function LabSubmissionPage() {
     load().catch((e) => setLoadError(e instanceof Error ? e.message : 'Failed to load'));
   }, [load]);
 
+  // Persist the draft and refresh the validator diagnostics. The response's
+  // `validation.errors` are non-blocking on a draft PATCH; they drive both the
+  // per-cell markers and the pre-submit summary.
+  const persist = useCallback(async () => {
+    const res = await api.patch<SaveDraftResponse>(`/submissions/${id}`, { data });
+    setErrors(toErrorMap(res.validation.errors));
+    setDirty(false);
+    return res;
+  }, [id, data]);
+
+  // Debounced autosave — quiet, no big banner, never on read-only submissions.
+  const autosaveNow = useCallback(async () => {
+    setAutosave({ state: 'saving' });
+    try {
+      const res = await persist();
+      setAutosave({ state: 'saved', ok: res.validation.ok });
+    } catch {
+      setAutosave({ state: 'error' });
+    }
+  }, [persist]);
+
+  useEffect(() => {
+    if (!editable || !dirty || busy) return;
+    const t = setTimeout(() => void autosaveNow(), AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [editable, dirty, busy, autosaveNow]);
+
+  // Warn before a full page unload (refresh / close / hard navigation) while
+  // there are edits the autosave has not yet flushed.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  // In-app navigation guard: intercept link clicks (header/sidebar) while dirty.
+  useEffect(() => {
+    if (!dirty) return;
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+        return;
+      const anchor = (e.target as HTMLElement | null)?.closest?.('a[href]') as
+        | HTMLAnchorElement
+        | null;
+      if (!anchor || anchor.target === '_blank') return;
+      const href = anchor.getAttribute('href');
+      if (!href || href.startsWith('#')) return;
+      const url = new URL(anchor.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      if (!window.confirm(LEAVE_PROMPT)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [dirty]);
+
   if (loadError && !detail) return <Callout tone="danger" title="Could not load">{loadError}</Callout>;
   if (!detail)
     return (
@@ -52,16 +127,13 @@ export default function LabSubmissionPage() {
       </div>
     );
 
-  const editable = canEditData(detail.status);
-
   async function save(): Promise<boolean> {
     setBusy(true);
     setActionError(null);
     setNotice(null);
     try {
-      const res = await api.patch<SaveDraftResponse>(`/submissions/${id}`, { data });
-      setErrors(toErrorMap(res.validation.errors));
-      setDirty(false);
+      const res = await persist();
+      setAutosave({ state: 'idle' });
       setNotice(
         res.validation.ok
           ? 'Draft saved — all required cells are filled.'
@@ -98,6 +170,11 @@ export default function LabSubmissionPage() {
     }
   }
 
+  function leave() {
+    if (dirty && !window.confirm(LEAVE_PROMPT)) return;
+    router.push('/lab');
+  }
+
   async function reply(parentId: string, message: string) {
     setBusy(true);
     setActionError(null);
@@ -118,7 +195,7 @@ export default function LabSubmissionPage() {
   return (
     <>
       <div className="page-head">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/lab')}>
+        <Button variant="ghost" size="sm" onClick={leave}>
           <ArrowLeft size={15} /> My reports
         </Button>
         <div className="page-head__row" style={{ marginTop: 8 }}>
@@ -130,6 +207,7 @@ export default function LabSubmissionPage() {
           </div>
           {editable && (
             <div className="toolbar">
+              <AutosaveIndicator state={autosave} dirty={dirty} />
               <Button variant="secondary" onClick={save} disabled={busy || !dirty}>
                 <Save size={16} /> Save draft
               </Button>
@@ -162,10 +240,12 @@ export default function LabSubmissionPage() {
         </div>
       )}
 
+      {editable && <ValidationSummary model={detail.renderModel} errors={errors} />}
+
       <div className="split" style={{ gridTemplateColumns: '1fr 340px' }}>
         <Card
           title={editable ? 'Fill in the report' : 'Report data'}
-          desc={editable ? 'Export reflects the last saved draft — save before exporting to include recent edits.' : undefined}
+          desc={editable ? 'Your draft saves automatically as you type.' : undefined}
           actions={
             detail.renderModel ? (
               <ExportMenu submissionId={id} onError={(m) => setActionError(m || null)} />
@@ -225,5 +305,24 @@ export default function LabSubmissionPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+function AutosaveIndicator({ state, dirty }: { state: AutosaveState; dirty: boolean }) {
+  let label: string | null = null;
+  let error = false;
+  if (state.state === 'saving') label = 'Saving…';
+  else if (dirty) label = 'Unsaved changes';
+  else if (state.state === 'saved')
+    label = state.ok ? 'Saved' : 'Saved — some cells to fix';
+  else if (state.state === 'error') {
+    label = 'Autosave failed — use Save draft';
+    error = true;
+  }
+  if (!label) return null;
+  return (
+    <span className={`autosave${error ? ' autosave--error' : ''}`} role="status" aria-live="polite">
+      {label}
+    </span>
   );
 }
