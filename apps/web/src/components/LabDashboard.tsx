@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
+  BadgeCheck,
   CalendarClock,
   CheckCircle2,
   FilePlus2,
@@ -132,6 +133,13 @@ function Ready({
           label="Next deadline"
           value={nextDeadline ? countdownLabel(nextDeadline) : '—'}
           foot={nextDeadline ? new Date(nextDeadline).toLocaleDateString() : 'Nothing outstanding'}
+        />
+        <Kpi
+          icon={<BadgeCheck size={15} />}
+          label="Approved"
+          value={overview.approved}
+          valueTone={overview.approved > 0 ? 'accent' : undefined}
+          foot="Accepted by the Bureau"
         />
       </div>
 

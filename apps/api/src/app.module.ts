@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
@@ -14,6 +15,7 @@ import { RequirementsModule } from './requirements/requirements.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { RemindersModule } from './reminders/reminders.module';
 import { StorageModule } from './storage/storage.module';
 import { MailModule } from './mail/mail.module';
 import { AppController } from './app.controller';
@@ -21,6 +23,7 @@ import { SessionAuthGuard, RolesGuard } from './common/guards';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuditModule,
     AuthModule,
@@ -35,6 +38,7 @@ import { SessionAuthGuard, RolesGuard } from './common/guards';
     SubmissionsModule,
     AnalyticsModule,
     NotificationsModule,
+    RemindersModule,
     StorageModule,
     MailModule,
   ],

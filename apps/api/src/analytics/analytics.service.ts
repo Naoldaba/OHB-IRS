@@ -95,6 +95,28 @@ export interface DashboardAnalytics {
   expectedSlots?: ExpectedSlot[];
 }
 
+/**
+ * One expected submission slot carrying the laboratory it belongs to, used by
+ * the scheduled reminder sweep (Phase 17) which spans all labs. This is the same
+ * "expected slot" the dashboard derives, exposed flat (per lab) with the raw
+ * `dueDate` so the sweep can compare it against its lead window.
+ */
+export interface ReminderSlot {
+  reportTypeId: string;
+  reportTypeName: string;
+  laboratoryId: string;
+  periodId: string;
+  periodLabel: string;
+  /** Canonical due date (UTC) for the slot's reporting period. */
+  dueDate: Date;
+  /** The matching submission's status, or null when nothing has been started. */
+  status: ReportStatus | null;
+  /** The draft to continue, or null when the report must still be created. */
+  submissionId: string | null;
+  /** Not submitted (missing or still an unsent draft). */
+  notSubmitted: boolean;
+}
+
 /** Statuses that mean the report has been submitted at least once. */
 const SUBMITTED_STATUSES = new Set<ReportStatus>([
   ReportStatus.SUBMITTED,
@@ -137,70 +159,10 @@ export class AnalyticsService {
     filter: { reportTypeId?: string; trendLimit?: number; laboratoryId?: string } = {},
   ): Promise<DashboardAnalytics> {
     const now = new Date();
-    const typeWhere = filter.reportTypeId ? { reportTypeId: filter.reportTypeId } : {};
     const labScoped = !!filter.laboratoryId;
 
-    const [labs, requirements, periods, submissions, reportTypes] = await Promise.all([
-      this.prisma.laboratory.findMany({
-        // Lab-scoped: the universe is just the one laboratory, so every
-        // requirement (incl. the all-labs ones) resolves to it and nothing else.
-        where: { isActive: true, ...(filter.laboratoryId ? { id: filter.laboratoryId } : {}) },
-        orderBy: { name: 'asc' },
-        select: { id: true, name: true, code: true },
-      }),
-      this.prisma.reportingRequirement.findMany({
-        where: { isActive: true, ...typeWhere },
-        select: { reportTypeId: true, laboratoryId: true },
-      }),
-      this.prisma.reportingPeriod.findMany({
-        // Only periods that have opened can be expected yet.
-        where: { startDate: { lte: now }, ...typeWhere },
-        orderBy: { startDate: 'asc' },
-        include: { reportType: { select: { id: true, name: true } } },
-      }),
-      this.prisma.reportSubmission.findMany({
-        where: { ...typeWhere, ...(filter.laboratoryId ? { laboratoryId: filter.laboratoryId } : {}) },
-        select: {
-          id: true,
-          reportTypeId: true,
-          laboratoryId: true,
-          reportingPeriodId: true,
-          status: true,
-          flags: true,
-        },
-      }),
-      this.prisma.reportType.findMany({
-        where: { isActive: true, ...(filter.reportTypeId ? { id: filter.reportTypeId } : {}) },
-        select: { id: true },
-      }),
-    ]);
-
-    const activeLabIds = new Set(labs.map((l) => l.id));
-
-    // Expected labs per report type, resolved from requirements (null lab = all active).
-    const labsByType = new Map<string, Set<string>>();
-    for (const req of requirements) {
-      let set = labsByType.get(req.reportTypeId);
-      if (!set) {
-        set = new Set<string>();
-        labsByType.set(req.reportTypeId, set);
-      }
-      if (req.laboratoryId) {
-        if (activeLabIds.has(req.laboratoryId)) set.add(req.laboratoryId);
-      } else {
-        for (const id of activeLabIds) set.add(id);
-      }
-    }
-
-    // One submission per (reportType, lab, period); index it for lookup.
-    const key = (t: string, l: string, p: string) => `${t}|${l}|${p}`;
-    const subByKey = new Map<string, { id: string; status: ReportStatus }>();
-    for (const s of submissions) {
-      subByKey.set(key(s.reportTypeId, s.laboratoryId, s.reportingPeriodId), {
-        id: s.id,
-        status: s.status as ReportStatus,
-      });
-    }
+    const { labs, labsByType, periods, subByKey, submissions, reportTypesCount } =
+      await this.loadComplianceData(filter, now);
 
     const overview = emptyCounts();
     const perLab = new Map<string, MutableCounts>(labs.map((l) => [l.id, emptyCounts()]));
@@ -214,7 +176,7 @@ export class AnalyticsService {
       const pastDue = now.getTime() > period.dueDate.getTime();
       const pc = emptyCounts();
       for (const labId of expectedLabs) {
-        const sub = subByKey.get(key(period.reportTypeId, labId, period.id)) ?? null;
+        const sub = subByKey.get(slotKey(period.reportTypeId, labId, period.id)) ?? null;
         const status = sub?.status ?? null;
         classify(overview, status, pastDue);
         const labCounts = perLab.get(labId);
@@ -272,7 +234,7 @@ export class AnalyticsService {
       overview: {
         ...finalize(overview),
         totalLaboratories: labs.length,
-        totalReportTypes: reportTypes.length,
+        totalReportTypes: reportTypesCount,
         flagged,
       },
       laboratories,
@@ -280,6 +242,120 @@ export class AnalyticsService {
       ...(labScoped ? { expectedSlots } : {}),
     };
   }
+
+  /**
+   * Flat list of every expected submission slot across all active labs, for the
+   * scheduled reminder sweep (Phase 17). Reuses the exact same derivation the
+   * dashboard uses — opened periods (`startDate <= now`) crossed with the labs an
+   * active {@link ReportingRequirement} resolves to — so reminders fire for the
+   * same universe compliance is measured against (never a not-yet-opened period,
+   * never an unrequired lab). Unscoped by design; the sweep spans the bureau.
+   */
+  async expectedSlotsForReminders(now = new Date()): Promise<ReminderSlot[]> {
+    const { labsByType, periods, subByKey } = await this.loadComplianceData({}, now);
+
+    const slots: ReminderSlot[] = [];
+    for (const period of periods) {
+      const expectedLabs = labsByType.get(period.reportTypeId);
+      if (!expectedLabs || expectedLabs.size === 0) continue;
+      for (const labId of expectedLabs) {
+        const sub = subByKey.get(slotKey(period.reportTypeId, labId, period.id)) ?? null;
+        const status = sub?.status ?? null;
+        slots.push({
+          reportTypeId: period.reportType.id,
+          reportTypeName: period.reportType.name,
+          laboratoryId: labId,
+          periodId: period.id,
+          periodLabel: period.label,
+          dueDate: period.dueDate,
+          status,
+          submissionId: sub?.id ?? null,
+          notSubmitted: status === null || status === ReportStatus.DRAFT,
+        });
+      }
+    }
+    return slots;
+  }
+
+  /**
+   * Shared data load + requirement resolution behind {@link dashboard} and
+   * {@link expectedSlotsForReminders}: the single source of truth for which
+   * labs owe which report types for which opened periods.
+   */
+  private async loadComplianceData(
+    filter: { reportTypeId?: string; laboratoryId?: string },
+    now: Date,
+  ) {
+    const typeWhere = filter.reportTypeId ? { reportTypeId: filter.reportTypeId } : {};
+
+    const [labs, requirements, periods, submissions, reportTypes] = await Promise.all([
+      this.prisma.laboratory.findMany({
+        // Lab-scoped: the universe is just the one laboratory, so every
+        // requirement (incl. the all-labs ones) resolves to it and nothing else.
+        where: { isActive: true, ...(filter.laboratoryId ? { id: filter.laboratoryId } : {}) },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, code: true },
+      }),
+      this.prisma.reportingRequirement.findMany({
+        where: { isActive: true, ...typeWhere },
+        select: { reportTypeId: true, laboratoryId: true },
+      }),
+      this.prisma.reportingPeriod.findMany({
+        // Only periods that have opened can be expected yet.
+        where: { startDate: { lte: now }, ...typeWhere },
+        orderBy: { startDate: 'asc' },
+        include: { reportType: { select: { id: true, name: true } } },
+      }),
+      this.prisma.reportSubmission.findMany({
+        where: { ...typeWhere, ...(filter.laboratoryId ? { laboratoryId: filter.laboratoryId } : {}) },
+        select: {
+          id: true,
+          reportTypeId: true,
+          laboratoryId: true,
+          reportingPeriodId: true,
+          status: true,
+          flags: true,
+        },
+      }),
+      this.prisma.reportType.findMany({
+        where: { isActive: true, ...(filter.reportTypeId ? { id: filter.reportTypeId } : {}) },
+        select: { id: true },
+      }),
+    ]);
+
+    const activeLabIds = new Set(labs.map((l) => l.id));
+
+    // Expected labs per report type, resolved from requirements (null lab = all active).
+    const labsByType = new Map<string, Set<string>>();
+    for (const req of requirements) {
+      let set = labsByType.get(req.reportTypeId);
+      if (!set) {
+        set = new Set<string>();
+        labsByType.set(req.reportTypeId, set);
+      }
+      if (req.laboratoryId) {
+        if (activeLabIds.has(req.laboratoryId)) set.add(req.laboratoryId);
+      } else {
+        for (const id of activeLabIds) set.add(id);
+      }
+    }
+
+    // One submission per (reportType, lab, period); index it for lookup.
+    const subByKey = new Map<string, { id: string; status: ReportStatus }>();
+    for (const s of submissions) {
+      subByKey.set(slotKey(s.reportTypeId, s.laboratoryId, s.reportingPeriodId), {
+        id: s.id,
+        status: s.status as ReportStatus,
+      });
+    }
+
+    return { labs, labsByType, periods, subByKey, submissions, reportTypesCount: reportTypes.length };
+  }
+}
+
+/** Composite key for the one submission that can exist per (reportType, lab, period). */
+function slotKey(reportTypeId: string, laboratoryId: string, periodId: string): string {
+  return `${reportTypeId}|${laboratoryId}|${periodId}`;
 }
 
 function emptyCounts(): MutableCounts {

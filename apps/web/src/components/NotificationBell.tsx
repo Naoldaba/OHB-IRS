@@ -13,6 +13,7 @@ import { useRouter } from 'next/navigation';
 import { Bell, Check } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { openNotificationTarget } from '@/lib/notification-nav';
 import type { Notification } from '@/lib/types';
 
 const POLL_MS = 45_000;
@@ -87,9 +88,7 @@ export function NotificationBell() {
       }
     }
     setOpen(false);
-    if (n.submissionId) {
-      router.push(`${isAdmin ? '/admin' : '/lab'}/submissions/${n.submissionId}`);
-    }
+    await openNotificationTarget(n, isAdmin, router);
   }
 
   async function markAll() {

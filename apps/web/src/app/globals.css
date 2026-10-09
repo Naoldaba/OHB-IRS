@@ -1590,3 +1590,118 @@ h4 {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ---- Modal / dialog (deadline reminder prompt) ----
+   A centered overlay card reusing the surface/border/shadow tokens so it reads
+   as the same system in light and dark. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: rgba(16, 24, 40, 0.45);
+  backdrop-filter: blur(2px);
+  animation: modal-fade 120ms ease-out;
+}
+.modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  animation: modal-rise 140ms ease-out;
+}
+.modal__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal__title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+  line-height: 1.35;
+}
+.modal__close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.modal__close:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+.modal__body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.modal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+}
+.reminder-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.reminder-group__label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.reminder-group__label--red {
+  color: var(--status-red);
+}
+.reminder-group__label--amber {
+  color: var(--status-amber);
+}
+.reminder-row {
+  text-align: left;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: border-color 100ms ease, background 100ms ease;
+}
+.reminder-row:hover {
+  border-color: var(--primary-accent);
+  background: var(--surface);
+}
+@keyframes modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

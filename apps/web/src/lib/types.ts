@@ -269,6 +269,9 @@ export interface Notification {
   title: string;
   body: string;
   submissionId: string | null;
+  /** Slot hints on a reminder whose report has not been started yet. */
+  reportTypeId: string | null;
+  reportingPeriodId: string | null;
   readAt: string | null;
   createdAt: string;
   actor?: { id: string; fullName: string } | null;

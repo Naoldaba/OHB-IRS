@@ -348,6 +348,11 @@ model Notification {
   // Optional deep link to the submission the event concerns.
   submissionId String?
   submission   ReportSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  // Deep-link hints for a reminder whose report has not been started yet (no
+  // submission exists): the slot the lab head should create/continue. Plain
+  // columns — a lightweight navigation hint, not part of the domain graph.
+  reportTypeId      String?
+  reportingPeriodId String?
   // Who triggered the event (nullable so a deleted actor doesn't drop the notice).
   actorId     String?
   actor       User?    @relation("notificationActor", fields: [actorId], references: [id], onDelete: SetNull)
@@ -357,4 +362,23 @@ model Notification {
 
   @@index([recipientId, readAt])
   @@index([submissionId])
+}
+
+/// Idempotency marker for scheduled deadline/overdue reminders (Phase 17). One
+/// row records that a given reminder type was already emitted for an expected
+/// submission slot — the (reportType, laboratory, period) triple — so the daily
+/// sweep never re-notifies the same slot. A slot can receive at most one
+/// DEADLINE_APPROACHING and one REPORT_OVERDUE over its lifetime. Plain columns
+/// (no relations): this is a lightweight append-only log, not part of the domain
+/// graph, and it survives independently of the slot's eventual submission.
+model ReminderDispatch {
+  id                String   @id @default(cuid())
+  reportTypeId      String
+  laboratoryId      String
+  reportingPeriodId String
+  type              String // NotificationType value (DEADLINE_APPROACHING / REPORT_OVERDUE)
+  sentAt            DateTime @default(now())
+
+  @@unique([reportTypeId, laboratoryId, reportingPeriodId, type])
+  @@index([reportingPeriodId])
 }

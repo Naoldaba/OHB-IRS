@@ -90,6 +90,10 @@ export enum NotificationType {
   REPORT_APPROVED = 'REPORT_APPROVED',
   // → the other party in a feedback thread.
   FEEDBACK_RECEIVED = 'FEEDBACK_RECEIVED',
+  // → the owning laboratory, from the scheduled reminder sweep (Phase 17), for
+  //   an expected-but-unsubmitted report as its due date nears or once it passes.
+  DEADLINE_APPROACHING = 'DEADLINE_APPROACHING',
+  REPORT_OVERDUE = 'REPORT_OVERDUE',
 }
 
 /** High-level audit action catalogue. Extend as features are added. */

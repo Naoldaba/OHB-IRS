@@ -78,6 +78,48 @@ export class NotificationsService {
       : this.emitToAdmins(submission, actor, NotificationType.FEEDBACK_RECEIVED, content);
   }
 
+  /**
+   * A scheduled deadline/overdue reminder (Phase 17) → the owning lab's heads.
+   * Unlike the event emitters there is no actor (the scheduler fires it) and the
+   * slot may not yet have a submission, so `submissionId` is optional (null
+   * deep-links to the lab dashboard instead of a specific report). Writes one row
+   * per active head and returns how many were written. The caller owns
+   * idempotency (the sent-marker); this just emits.
+   */
+  async notifyReminder(params: {
+    laboratoryId: string;
+    type: NotificationType.DEADLINE_APPROACHING | NotificationType.REPORT_OVERDUE;
+    title: string;
+    body: string;
+    submissionId: string | null;
+    /** Slot hints so the notice can create/continue the draft when not started. */
+    reportTypeId: string;
+    reportingPeriodId: string;
+  }): Promise<number> {
+    const heads = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        laboratoryId: params.laboratoryId,
+        role: { name: RoleName.REGIONAL_LAB_HEAD },
+      },
+      select: { id: true },
+    });
+    if (heads.length === 0) return 0;
+    await this.prisma.notification.createMany({
+      data: heads.map((h) => ({
+        recipientId: h.id,
+        type: params.type,
+        title: params.title,
+        body: params.body,
+        submissionId: params.submissionId,
+        reportTypeId: params.reportTypeId,
+        reportingPeriodId: params.reportingPeriodId,
+        actorId: null,
+      })),
+    });
+    return heads.length;
+  }
+
   // ---- Recipient resolution -------------------------------------------------
 
   private async emitToAdmins(
