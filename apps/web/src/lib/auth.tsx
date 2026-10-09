@@ -15,7 +15,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { RoleName } from '@ohb/shared';
+import { RoleScope } from '@ohb/shared';
 import { api, ApiError } from './api';
 import type { AuthUser } from './types';
 
@@ -33,6 +33,9 @@ interface AuthContextValue {
   refresh: () => Promise<void>;
   isAdmin: boolean;
   isLab: boolean;
+  /** Whether the signed-in user's role holds a capability (Phase 28). Convenience
+   *  only — the API independently enforces every capability server-side. */
+  can: (capability: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -98,8 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyTwoFactor,
       logout,
       refresh,
-      isAdmin: user?.role === RoleName.BUREAU_ADMIN,
-      isLab: user?.role === RoleName.REGIONAL_LAB_HEAD,
+      // "Admin"/"lab" are really data-boundary (scope) distinctions, so custom
+      // roles slot into the right portal automatically.
+      isAdmin: user?.scope === RoleScope.BUREAU,
+      isLab: user?.scope === RoleScope.LAB,
+      can: (capability: string) => user?.capabilities?.includes(capability) ?? false,
     }),
     [user, loading, login, verifyTwoFactor, logout, refresh],
   );
@@ -113,12 +119,12 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-/** Landing route for a role after login. */
-export function homeFor(role: RoleName | undefined): string {
-  return role === RoleName.BUREAU_ADMIN ? '/admin' : '/lab';
+/** Landing route for a scope after login (bureau → admin portal, lab → lab portal). */
+export function homeFor(scope: RoleScope | string | undefined): string {
+  return scope === RoleScope.BUREAU ? '/admin' : '/lab';
 }
 
 /** Where to send a signed-in user: the forced change-password page takes priority. */
-export function landingFor(user: Pick<AuthUser, 'role' | 'mustChangePassword'>): string {
-  return user.mustChangePassword ? '/change-password' : homeFor(user.role);
+export function landingFor(user: Pick<AuthUser, 'scope' | 'mustChangePassword'>): string {
+  return user.mustChangePassword ? '/change-password' : homeFor(user.scope);
 }

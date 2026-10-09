@@ -1,29 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, ShieldCheck } from 'lucide-react';
-import { RoleName } from '@ohb/shared';
+import { ROLE_META, RoleScope, type RoleSummary } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
 import type { Laboratory, User } from '@/lib/types';
 import { Button, Callout, Card, Field, Pill, Spinner } from '@/components/ui';
 
-const ROLE_LABEL: Record<RoleName, string> = {
-  [RoleName.BUREAU_ADMIN]: 'Bureau Administrator',
-  [RoleName.REGIONAL_LAB_HEAD]: 'Regional Lab Head',
-};
+/** Nice label for a role name — the matrix label for system roles, else the name. */
+function labelFor(roles: RoleSummary[], name: string): string {
+  const match = roles.find((r) => r.name === name);
+  if (match) return match.label;
+  return (ROLE_META as Record<string, { label: string }>)[name]?.label ?? name;
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[] | null>(null);
   const [labs, setLabs] = useState<Laboratory[]>([]);
+  const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const [u, l] = await Promise.all([
+    const [u, l, r] = await Promise.all([
       api.get<User[]>('/users'),
       api.get<Laboratory[]>('/labs'),
+      api.get<RoleSummary[]>('/roles'),
     ]);
     setUsers(u);
     setLabs(l);
+    setRoles(r);
   }
 
   useEffect(() => {
@@ -39,17 +44,18 @@ export default function UsersPage() {
     );
 
   const activeLabs = labs.filter((l) => l.isActive);
+  const assignableRoles = roles.filter((r) => r.isActive);
 
   return (
     <>
       <div className="page-head">
         <div className="micro-label">Administration</div>
         <h1>Users</h1>
-        <p>Create Bureau Administrators and Regional Lab Heads. New users receive a temporary password and must set their own at first sign-in.</p>
+        <p>Provision accounts and assign each a role. New users receive a temporary password and must set their own at first sign-in.</p>
       </div>
 
       <div className="split" style={{ marginTop: 18 }}>
-        <NewUserCard labs={activeLabs} onCreated={load} />
+        <NewUserCard labs={activeLabs} roles={assignableRoles} onCreated={load} />
 
         <Card title="People">
           {users.length === 0 ? (
@@ -67,7 +73,7 @@ export default function UsersPage() {
               </thead>
               <tbody>
                 {users.map((u) => (
-                  <UserRow key={u.id} user={u} onChanged={load} />
+                  <UserRow key={u.id} user={u} roleLabel={labelFor(roles, u.role.name)} onChanged={load} />
                 ))}
               </tbody>
             </table>
@@ -78,7 +84,15 @@ export default function UsersPage() {
   );
 }
 
-function UserRow({ user, onChanged }: { user: User; onChanged: () => Promise<void> }) {
+function UserRow({
+  user,
+  roleLabel,
+  onChanged,
+}: {
+  user: User;
+  roleLabel: string;
+  onChanged: () => Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,7 +135,7 @@ function UserRow({ user, onChanged }: { user: User; onChanged: () => Promise<voi
         <div style={{ fontWeight: 600 }}>{user.fullName}</div>
         <div className="text-sm muted">{user.email}</div>
       </td>
-      <td className="text-sm">{ROLE_LABEL[user.role.name]}</td>
+      <td className="text-sm">{roleLabel}</td>
       <td className="text-sm muted">{user.laboratory?.name ?? '—'}</td>
       <td>
         <div className="toolbar" style={{ gap: 6 }}>
@@ -152,26 +166,38 @@ function UserRow({ user, onChanged }: { user: User; onChanged: () => Promise<voi
 
 function NewUserCard({
   labs,
+  roles,
   onCreated,
 }: {
   labs: Laboratory[];
+  roles: RoleSummary[];
   onCreated: () => Promise<void>;
 }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<RoleName>(RoleName.REGIONAL_LAB_HEAD);
+  const [role, setRole] = useState('');
   const [laboratoryId, setLaboratoryId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const needsLab = role === RoleName.REGIONAL_LAB_HEAD;
+  // Default to the first available role once roles load.
+  useEffect(() => {
+    if (!role && roles.length > 0) setRole(roles[0].name);
+  }, [roles, role]);
+
+  const selectedRole = useMemo(() => roles.find((r) => r.name === role), [roles, role]);
+  const needsLab = selectedRole?.scope === RoleScope.LAB;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!role) {
+      setError('Select a role.');
+      return;
+    }
     if (needsLab && !laboratoryId) {
-      setError('Select a laboratory for the Regional Lab Head.');
+      setError('Select a laboratory for this lab-scoped role.');
       return;
     }
     setBusy(true);
@@ -228,13 +254,13 @@ function NewUserCard({
             className="select"
             value={role}
             onChange={(e) => {
-              setRole(e.target.value as RoleName);
+              setRole(e.target.value);
               setLaboratoryId('');
             }}
           >
-            {Object.values(RoleName).map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABEL[r]}
+            {roles.map((r) => (
+              <option key={r.name} value={r.name}>
+                {r.label} ({r.scope === RoleScope.BUREAU ? 'Bureau' : 'Lab'})
               </option>
             ))}
           </select>
@@ -273,7 +299,7 @@ function NewUserCard({
             autoComplete="off"
           />
         </Field>
-        <Button type="submit" disabled={busy || (needsLab && labs.length === 0)}>
+        <Button type="submit" disabled={busy || !role || (needsLab && labs.length === 0)}>
           <Plus size={16} /> Add user
         </Button>
       </form>

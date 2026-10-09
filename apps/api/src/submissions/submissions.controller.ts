@@ -15,12 +15,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Response } from 'express';
-import { RoleName } from '@ohb/shared';
-import { Roles, CurrentUser } from '../common/decorators';
+import { RequireCapability, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { ATTACHMENT_MAX_BYTES, SubmissionsService } from './submissions.service';
 import {
   AddFeedbackDto,
+  ApproveSubmissionDto,
   CreateSubmissionDto,
   ExportSubmissionQueryDto,
   ListSubmissionsQueryDto,
@@ -107,7 +107,7 @@ export class SubmissionsController {
 
   /** Upload a supporting document. Owning laboratory only; editable states only. */
   @Post(':id/attachments')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('manage_attachments')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -146,7 +146,7 @@ export class SubmissionsController {
 
   /** Remove an attachment. Owning laboratory only; editable states only. */
   @Delete(':id/attachments/:attachmentId')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('manage_attachments')
   removeAttachment(
     @Param('id') id: string,
     @Param('attachmentId') attachmentId: string,
@@ -158,13 +158,13 @@ export class SubmissionsController {
   // ---- Lab authoring --------------------------------------------------------
 
   @Post()
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('create_reports')
   create(@Body() dto: CreateSubmissionDto, @CurrentUser() user: AuthUser) {
     return this.submissions.create(user, dto);
   }
 
   @Patch(':id')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('edit_report_drafts')
   updateData(
     @Param('id') id: string,
     @Body() dto: UpdateSubmissionDataDto,
@@ -174,13 +174,13 @@ export class SubmissionsController {
   }
 
   @Post(':id/submit')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('submit_reports')
   submit(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.submissions.submit(id, user);
   }
 
   @Post(':id/resubmit')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('submit_reports')
   resubmit(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.submissions.resubmit(id, user);
   }
@@ -188,13 +188,13 @@ export class SubmissionsController {
   // ---- Admin review ---------------------------------------------------------
 
   @Post(':id/review/start')
-  @Roles(RoleName.BUREAU_ADMIN)
+  @RequireCapability('review_submissions')
   startReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.submissions.startReview(id, user);
   }
 
   @Post(':id/review/request-revision')
-  @Roles(RoleName.BUREAU_ADMIN)
+  @RequireCapability('request_revisions')
   requestRevision(
     @Param('id') id: string,
     @Body() dto: RequestRevisionDto,
@@ -204,9 +204,13 @@ export class SubmissionsController {
   }
 
   @Post(':id/review/approve')
-  @Roles(RoleName.BUREAU_ADMIN)
-  approve(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.submissions.approve(id, user);
+  @RequireCapability('approve_reports')
+  approve(
+    @Param('id') id: string,
+    @Body() dto: ApproveSubmissionDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.submissions.approve(id, user, dto);
   }
 
   // Both the Bureau and the owning laboratory may comment / reply (threads are a

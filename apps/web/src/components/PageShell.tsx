@@ -10,33 +10,52 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { LogOut, ShieldCheck } from 'lucide-react';
-import { RoleName } from '@ohb/shared';
+import { ROLE_META } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
+import { GlobalSearch } from './GlobalSearch';
+import { NavMenu, type NavLink } from './NavMenu';
 import { NotificationBell } from './NotificationBell';
 import { ThemeToggle } from './ThemeToggle';
 import { Avatar, BrandMark } from './ui';
 import type { ReactNode } from 'react';
 
-const ADMIN_NAV = [
+type NavGroup = { label: string; items: NavLink[] };
+type NavItem = NavLink | NavGroup;
+
+// `cap`-tagged items appear only when the signed-in role holds that capability
+// (Phase 28b). Untagged items are always shown to the portal's scope. Visibility
+// here is cosmetic — the API independently authorizes every call.
+const ADMIN_NAV: NavItem[] = [
   { href: '/admin', label: 'Overview' },
-  { href: '/admin/analytics', label: 'Dashboard' },
+  { href: '/admin/analytics', label: 'Dashboard', cap: 'view_bureau_analytics' },
   { href: '/admin/report-types', label: 'Reports' },
-  { href: '/admin/periods', label: 'Periods' },
-  { href: '/admin/requirements', label: 'Requirements' },
+  { href: '/admin/periods', label: 'Periods', cap: 'manage_periods' },
+  { href: '/admin/requirements', label: 'Requirements', cap: 'manage_requirements' },
   { href: '/admin/submissions', label: 'Submissions' },
-  { href: '/admin/labs', label: 'Labs' },
-  { href: '/admin/users', label: 'Users' },
-  { href: '/admin/audit', label: 'Audit' },
+  { href: '/admin/audit', label: 'Audit', cap: 'view_audit' },
+  {
+    label: 'Administration',
+    items: [
+      { href: '/admin/labs', label: 'Labs', cap: 'manage_laboratories' },
+      { href: '/admin/users', label: 'Users', cap: 'manage_users' },
+      { href: '/admin/roles', label: 'Permissions', cap: 'manage_roles' },
+    ],
+  },
 ];
 
-const LAB_NAV = [{ href: '/lab', label: 'My reports' }];
+const LAB_NAV: NavItem[] = [{ href: '/lab', label: 'My reports' }];
 
 export function PageShell({ children }: { children: ReactNode }) {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, isAdmin, can } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  const nav = isAdmin ? ADMIN_NAV : LAB_NAV;
+  const visible = (item: NavLink) => !item.cap || can(item.cap);
+  const nav: NavItem[] = (isAdmin ? ADMIN_NAV : LAB_NAV)
+    .map((item) =>
+      'items' in item ? { ...item, items: item.items.filter(visible) } : item,
+    )
+    .filter((item) => ('items' in item ? item.items.length > 0 : visible(item)));
 
   const isActive = (href: string) =>
     href === '/admin' || href === '/lab'
@@ -76,19 +95,24 @@ export function PageShell({ children }: { children: ReactNode }) {
           </Link>
 
           <nav className="nav">
-            {nav.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={isActive(item.href) ? 'active' : ''}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {nav.map((item) =>
+              'items' in item ? (
+                <NavMenu key={item.label} label={item.label} items={item.items} />
+              ) : (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={isActive(item.href) ? 'active' : ''}
+                >
+                  {item.label}
+                </Link>
+              ),
+            )}
           </nav>
 
           <div className="app-header__spacer" />
 
+          <GlobalSearch />
           <ThemeToggle />
           <NotificationBell />
 
@@ -103,7 +127,9 @@ export function PageShell({ children }: { children: ReactNode }) {
                 <span className="user-chip__name">{user?.fullName}</span>
                 <br />
                 <span className="user-chip__role">
-                  {user?.role === RoleName.BUREAU_ADMIN ? 'Bureau Admin' : 'Lab Head'}
+                  {user
+                    ? (ROLE_META as Record<string, { label: string }>)[user.role]?.label ?? user.role
+                    : ''}
                 </span>
               </span>
             </Link>

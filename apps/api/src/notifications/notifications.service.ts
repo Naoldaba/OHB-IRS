@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { NotificationType, RoleName } from '@ohb/shared';
+import { NotificationType, RoleScope } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { AuthUser } from '../common/auth-user';
@@ -11,9 +11,9 @@ export type Recipient = {
   email: string;
   fullName: string;
   emailNotifications: boolean;
-  /** RoleName value — present on @mention targets so the email deep link routes
+  /** RoleScope value — present on @mention targets so the email deep link routes
    *  to the recipient's own portal. Optional for the workflow emitters. */
-  role?: string;
+  scope?: string;
 };
 
 /** Which portal a recipient uses, so a deep link routes to the right route tree. */
@@ -94,7 +94,7 @@ export class NotificationsService {
       title: 'New feedback',
       body: `${actor.fullName} commented on ${this.subject(submission)}.`,
     };
-    return actor.role === RoleName.BUREAU_ADMIN
+    return actor.scope === RoleScope.BUREAU
       ? this.emitToLab(submission, actor, NotificationType.FEEDBACK_RECEIVED, content)
       : this.emitToAdmins(submission, actor, NotificationType.FEEDBACK_RECEIVED, content);
   }
@@ -131,7 +131,7 @@ export class NotificationsService {
           [m],
           title,
           body,
-          this.submissionLink(m.role === RoleName.BUREAU_ADMIN ? 'admin' : 'lab', submission.id),
+          this.submissionLink(m.scope === RoleScope.BUREAU ? 'admin' : 'lab', submission.id),
         ),
       ),
     );
@@ -159,7 +159,7 @@ export class NotificationsService {
       where: {
         isActive: true,
         laboratoryId: params.laboratoryId,
-        role: { name: RoleName.REGIONAL_LAB_HEAD },
+        role: { scope: RoleScope.LAB },
       },
       select: { id: true, email: true, fullName: true, emailNotifications: true },
     });
@@ -192,7 +192,7 @@ export class NotificationsService {
     content: { title: string; body: string },
   ) {
     const admins = await this.prisma.user.findMany({
-      where: { isActive: true, role: { name: RoleName.BUREAU_ADMIN } },
+      where: { isActive: true, role: { scope: RoleScope.BUREAU } },
       select: { id: true, email: true, fullName: true, emailNotifications: true },
     });
     return this.write(admins, 'admin', submission, actor, type, content);
@@ -208,7 +208,7 @@ export class NotificationsService {
       where: {
         isActive: true,
         laboratoryId: submission.laboratoryId,
-        role: { name: RoleName.REGIONAL_LAB_HEAD },
+        role: { scope: RoleScope.LAB },
       },
       select: { id: true, email: true, fullName: true, emailNotifications: true },
     });

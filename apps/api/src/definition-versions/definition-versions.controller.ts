@@ -1,16 +1,15 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { Roles, CurrentUser } from '../common/decorators';
+import { RequireCapability, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { DefinitionVersionsService } from './definition-versions.service';
 import { CreateDefinitionVersionDto, UpdateSchemaDto } from './dto';
 
 /**
- * Report-definition version authoring. BUREAU_ADMIN only — labs never read or
- * modify definitions. Nested under a report type.
+ * Report-definition version authoring. Requires `author_definitions` — labs
+ * never read or modify definitions. Nested under a report type.
  */
 @Controller('report-types/:reportTypeId/definition-versions')
-@Roles(RoleName.BUREAU_ADMIN)
+@RequireCapability('author_definitions')
 export class DefinitionVersionsController {
   constructor(private readonly versions: DefinitionVersionsService) {}
 

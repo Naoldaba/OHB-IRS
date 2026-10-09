@@ -2,23 +2,23 @@
 
 /**
  * Client-side route guard: waits for the session check, then redirects anyone
- * who isn't signed in (or lacks the required role) away. This is a UX guard
- * only — every API call is independently authorized server-side.
+ * who isn't signed in (or whose scope doesn't match the portal) away. This is a
+ * UX guard only — every API call is independently authorized server-side.
  */
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { RoleName } from '@ohb/shared';
+import { RoleScope } from '@ohb/shared';
 import { useAuth, homeFor } from '@/lib/auth';
 import { PageShell } from './PageShell';
 import { Spinner } from './ui';
 import type { ReactNode } from 'react';
 
 export function Protected({
-  role,
+  scope,
   children,
 }: {
-  role?: RoleName;
+  scope?: RoleScope;
   children: ReactNode;
 }) {
   const { user, loading } = useAuth();
@@ -30,12 +30,12 @@ export function Protected({
       router.replace('/login');
     } else if (user.mustChangePassword) {
       router.replace('/change-password');
-    } else if (role && user.role !== role) {
-      router.replace(homeFor(user.role));
+    } else if (scope && user.scope !== scope) {
+      router.replace(homeFor(user.scope));
     }
-  }, [loading, user, role, router]);
+  }, [loading, user, scope, router]);
 
-  if (loading || !user || user.mustChangePassword || (role && user.role !== role)) {
+  if (loading || !user || user.mustChangePassword || (scope && user.scope !== scope)) {
     return (
       <div className="loading-screen">
         <Spinner />

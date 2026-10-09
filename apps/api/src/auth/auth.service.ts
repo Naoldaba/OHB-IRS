@@ -11,6 +11,7 @@ import { AuditAction } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuthUser } from '../common/auth-user';
+import { PermissionsService } from '../common/permissions.service';
 import { STORAGE, StorageProvider } from '../storage/storage.provider';
 import { MailService } from '../mail/mail.service';
 
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly audit: AuditService,
     @Inject(STORAGE) private readonly storage: StorageProvider,
     private readonly mail: MailService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   /**
@@ -200,22 +202,26 @@ export class AuthService {
   }
 
   /** Maps a user row (with its role loaded) to the session principal shape. */
-  private toAuthUser(user: {
+  private async toAuthUser(user: {
     id: string;
     email: string;
     fullName: string;
-    role: { name: string };
+    roleId: string;
+    role: { name: string; scope: string };
     laboratoryId: string | null;
     avatarUrl: string | null;
     mustChangePassword: boolean;
     twoFactorEnabled: boolean;
     emailNotifications: boolean;
-  }): AuthUser {
+  }): Promise<AuthUser> {
+    const capabilities = await this.permissions.capabilitiesForRole(user.roleId);
     return {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       role: user.role.name,
+      scope: user.role.scope,
+      capabilities: [...capabilities],
       laboratoryId: user.laboratoryId,
       avatarUrl: user.avatarUrl,
       mustChangePassword: user.mustChangePassword,

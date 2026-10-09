@@ -13,10 +13,29 @@ datasource db {
 }
 
 model Role {
-  id          String  @id @default(cuid())
-  name        String  @unique // RoleName enum value
+  id          String           @id @default(cuid())
+  name        String           @unique // RoleName value for system roles; free text for custom roles
   description String?
+  // Data boundary (Phase 28b): RoleScope value (BUREAU | LAB).
+  scope       String           @default("LAB")
+  // System roles (the two seeded roles) cannot be renamed, rescoped or deleted.
+  isSystem    Boolean          @default(false)
+  isActive    Boolean          @default(true)
   users       User[]
+  permissions RolePermission[]
+}
+
+// Editable role → capability grants (Phase 28). The capability `key` is a
+// code-backed whitelist value from `@ohb/shared` (CAPABILITIES); only the grant
+// is data. Live authorization reads these rows, so editing them changes access.
+model RolePermission {
+  id            String @id @default(cuid())
+  roleId        String
+  capabilityKey String
+  role          Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, capabilityKey])
+  @@index([roleId])
 }
 
 model Laboratory {
@@ -76,6 +95,7 @@ model User {
   resolvedFeedbacks    Feedback[]           @relation("feedbackResolvedBy")
   feedbackMentions     FeedbackMention[]    @relation("feedbackMentionedUser")
   attachments          Attachment[]         @relation("attachmentUploadedBy")
+  signOffs             ReportSignOff[]      @relation("signOffSignedBy")
   auditLogs            AuditLog[]           @relation("auditActor")
   createdDefinitionVersions   ReportDefinitionVersion[] @relation("defVersionCreatedBy")
   publishedDefinitionVersions ReportDefinitionVersion[] @relation("defVersionPublishedBy")
@@ -155,6 +175,11 @@ model ReportType {
   requirements       ReportingRequirement[]
   definitionVersions ReportDefinitionVersion[]
 
+  // NOTE: a STORED GENERATED `searchVector tsvector` column + GIN index exist in
+  // the DB for full-text search (Phase 25, migration add_full_text_search). They
+  // are managed entirely in SQL — Prisma cannot model GENERATED columns — and are
+  // read only via $queryRaw in the search module, so they are not declared here.
+
   @@index([categoryId])
 }
 
@@ -229,6 +254,7 @@ model ReportSubmission {
   feedback      Feedback[]
   attachments   Attachment[]
   notifications Notification[]
+  signOffs      ReportSignOff[]
 
   // One submission per report type, per lab, per period.
   @@unique([reportTypeId, laboratoryId, reportingPeriodId])
@@ -279,6 +305,10 @@ model Feedback {
   mentions     FeedbackMention[]
   createdAt    DateTime         @default(now())
 
+  // NOTE: a STORED GENERATED `searchVector tsvector` column + GIN index exist in
+  // the DB for full-text search over the message (Phase 25, migration
+  // add_full_text_search), managed in SQL and read via $queryRaw — see ReportType.
+
   @@index([submissionId])
   @@index([parentId])
 }
@@ -296,6 +326,31 @@ model FeedbackMention {
 
   @@unique([feedbackId, mentionedUserId])
   @@index([mentionedUserId])
+}
+
+/// An accountable, immutable digital sign-off recorded when a reviewer completes
+/// a review by approving a submission (Phase 27). It captures who signed, when,
+/// the submission version they signed, the definition version in force, a typed
+/// full-name affirmation and an optional note. Rows are append-only — never
+/// updated — so the approval record cannot be silently altered, and are kept as
+/// part of the submission's history.
+model ReportSignOff {
+  id                  String                   @id @default(cuid())
+  submissionId        String
+  submission          ReportSubmission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  signedById          String
+  signedBy            User                     @relation("signOffSignedBy", fields: [signedById], references: [id])
+  // The submission version (currentVersion) that was approved, and the definition
+  // version in force at approval — so it is unambiguous what was signed.
+  versionNumber       Int
+  definitionVersionId String?
+  definitionVersion   ReportDefinitionVersion? @relation(fields: [definitionVersionId], references: [id])
+  // Typed full-name affirmation captured at approval (snapshot; not a crypto signature).
+  confirmedName       String
+  note                String?
+  createdAt           DateTime                 @default(now())
+
+  @@index([submissionId])
 }
 
 model Attachment {
@@ -336,6 +391,7 @@ model ReportDefinitionVersion {
 
   rules       BusinessRule[]
   submissions ReportSubmission[]
+  signOffs    ReportSignOff[]
 
   @@unique([reportTypeId, version])
   @@index([reportTypeId])

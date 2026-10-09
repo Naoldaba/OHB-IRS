@@ -12,6 +12,7 @@ import { ValidationSummary } from '@/components/report/ValidationSummary';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { VersionHistory } from '@/components/report/VersionHistory';
 import { SubmissionTimeline } from '@/components/report/SubmissionTimeline';
+import { SignOffCard } from '@/components/report/SignOffCard';
 import { ExportMenu } from '@/components/report/ExportMenu';
 import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
 import { sectionOptions } from '@/components/report/anchors';
@@ -267,6 +268,12 @@ export default function LabSubmissionPage() {
       )}
 
       {editable && <ValidationSummary model={detail.renderModel} errors={errors} />}
+
+      {detail.signOffs.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <SignOffCard signOffs={detail.signOffs} />
+        </div>
+      )}
 
       <div className="split" style={{ gridTemplateColumns: '1fr 340px' }}>
         <Card

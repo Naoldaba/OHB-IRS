@@ -8,19 +8,18 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { CurrentUser, Roles } from '../common/decorators';
+import { CurrentUser, RequireCapability } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { RulesService } from './rules.service';
 import { CreateRuleDto, TestRulesDto, UpdateRuleDto, ValidateRulesDto } from './dto';
 
 /**
  * Business-rule authoring + config validation + dry-run, scoped to a report
- * type's definition version. BUREAU_ADMIN only — labs never read or modify
- * definitions or rules (IMPLEMENTATION_PLAN §6.8).
+ * type's definition version. Requires `author_definitions` — labs never read or
+ * modify definitions or rules (IMPLEMENTATION_PLAN §6.8).
  */
 @Controller('report-types/:reportTypeId/definition-versions/:versionId')
-@Roles(RoleName.BUREAU_ADMIN)
+@RequireCapability('author_definitions')
 export class RulesController {
   constructor(private readonly rules: RulesService) {}
 

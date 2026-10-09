@@ -10,9 +10,19 @@ import { AuthUser } from './auth-user';
 export const IS_PUBLIC_KEY = 'isPublic';
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
 
-/** Restricts a route to the given roles (enforced by RolesGuard). */
+/** Restricts a route to the given roles (legacy; superseded by @RequireCapability). */
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: RoleName[]) => SetMetadata(ROLES_KEY, roles);
+
+/**
+ * Restricts a route to principals holding every listed capability (Phase 28,
+ * enforced by PermissionsGuard against the DB-backed grants). A handler-level
+ * decoration overrides a controller-level one. No decoration ⇒ any authenticated
+ * user (then service-level scoping applies).
+ */
+export const REQUIRE_CAPABILITY_KEY = 'requireCapability';
+export const RequireCapability = (...capabilities: string[]) =>
+  SetMetadata(REQUIRE_CAPABILITY_KEY, capabilities);
 
 /**
  * Marks a route as reachable while the user still owes a password change

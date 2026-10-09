@@ -15,7 +15,7 @@ import {
   FeedbackType,
   FieldSchema,
   ReportStatus,
-  RoleName,
+  RoleScope,
   RuleSeverity,
   WorkflowAction,
   buildRenderModel,
@@ -39,6 +39,7 @@ import {
 import type { ExportMetaRow } from '../export/export-model';
 import {
   AddFeedbackDto,
+  ApproveSubmissionDto,
   CreateSubmissionDto,
   ListSubmissionsQueryDto,
   RequestRevisionDto,
@@ -129,8 +130,8 @@ export class SubmissionsService {
     if (query.status) where.status = query.status;
     if (query.reportTypeId) where.reportTypeId = query.reportTypeId;
 
-    if (user.role === RoleName.REGIONAL_LAB_HEAD) {
-      // Labs only ever see their own laboratory's submissions, regardless of filters.
+    if (user.scope === RoleScope.LAB) {
+      // Lab-scoped users only ever see their own laboratory's submissions, regardless of filters.
       where.laboratoryId = user.laboratoryId ?? '__none__';
     } else if (query.laboratoryId) {
       where.laboratoryId = query.laboratoryId;
@@ -173,6 +174,13 @@ export class SubmissionsService {
           include: FEEDBACK_THREAD_INCLUDE,
         },
         versions: { orderBy: { versionNumber: 'asc' } },
+        signOffs: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            signedBy: { select: { id: true, fullName: true } },
+            definitionVersion: { select: { version: true } },
+          },
+        },
       },
     });
     if (!submission) throw new NotFoundException('Submission not found');
@@ -457,9 +465,48 @@ export class SubmissionsService {
     return updated;
   }
 
-  async approve(id: string, user: AuthUser) {
+  /**
+   * Approve a submission and record an accountable digital sign-off (Phase 27).
+   * The reviewer re-affirms the approval by typing their own full name (checked
+   * here against the signed-in user — accountability, not a crypto signature);
+   * an optional note is kept. The sign-off is written in the same DB transaction
+   * as the APPROVED transition, pinned to the version/definition that was signed,
+   * and is immutable (append-only) so the approval cannot be silently altered.
+   */
+  async approve(id: string, user: AuthUser, dto: ApproveSubmissionDto) {
     const submission = await this.load(id);
-    const updated = await this.transition(submission, 'approve', user);
+
+    const confirmed = dto.confirmName.trim();
+    if (confirmed.toLowerCase() !== user.fullName.trim().toLowerCase()) {
+      throw new BadRequestException(
+        'To sign off, type your own full name exactly as it appears on your account.',
+      );
+    }
+    const note = dto.note?.trim() || undefined;
+
+    const updated = await this.transition(submission, 'approve', user, {
+      metadata: { note: note ?? null },
+      afterCommit: async (tx, result) => {
+        await tx.reportSignOff.create({
+          data: {
+            submissionId: result.id,
+            signedById: user.id,
+            versionNumber: result.currentVersion,
+            definitionVersionId: result.definitionVersionId,
+            confirmedName: confirmed,
+            note,
+          },
+        });
+      },
+    });
+
+    await this.audit.record({
+      action: AuditAction.REPORT_SIGNED_OFF,
+      actorId: user.id,
+      entityType: 'ReportSubmission',
+      entityId: id,
+      metadata: { versionNumber: updated.currentVersion, note: note ?? null },
+    });
     await this.notifications.notifyApproved(updated, user);
     return updated;
   }
@@ -476,9 +523,10 @@ export class SubmissionsService {
     const submission = await this.load(id);
     this.assertAccess(submission, user);
 
-    // Labs can comment and reply, but never author a revision request.
+    // Labs can comment and reply, but never author a revision request. A
+    // revision request is a cross-lab (bureau) review action.
     const type =
-      user.role === RoleName.BUREAU_ADMIN
+      user.scope === RoleScope.BUREAU
         ? dto.type ?? FeedbackType.COMMENT
         : FeedbackType.COMMENT;
 
@@ -566,8 +614,8 @@ export class SubmissionsService {
         id: { in: [...new Set(mentionIds)] },
         isActive: true,
         OR: [
-          { role: { name: RoleName.BUREAU_ADMIN } },
-          { role: { name: RoleName.REGIONAL_LAB_HEAD }, laboratoryId },
+          { role: { scope: RoleScope.BUREAU } },
+          { role: { scope: RoleScope.LAB }, laboratoryId },
         ],
       },
       select: {
@@ -575,7 +623,7 @@ export class SubmissionsService {
         email: true,
         fullName: true,
         emailNotifications: true,
-        role: { select: { name: true } },
+        role: { select: { scope: true } },
       },
     });
     return users.map((u) => ({
@@ -583,7 +631,7 @@ export class SubmissionsService {
       email: u.email,
       fullName: u.fullName,
       emailNotifications: u.emailNotifications,
-      role: u.role.name,
+      scope: u.role.scope,
     }));
   }
 
@@ -599,8 +647,8 @@ export class SubmissionsService {
       where: {
         isActive: true,
         OR: [
-          { role: { name: RoleName.BUREAU_ADMIN } },
-          { role: { name: RoleName.REGIONAL_LAB_HEAD }, laboratoryId: submission.laboratoryId },
+          { role: { scope: RoleScope.BUREAU } },
+          { role: { scope: RoleScope.LAB }, laboratoryId: submission.laboratoryId },
         ],
       },
       select: { id: true, fullName: true, role: { select: { name: true } } },
@@ -731,6 +779,10 @@ export class SubmissionsService {
       } else if (kind === 'submitted' || kind === 'resubmitted') {
         const versionNumber = versionQueue.shift();
         if (versionNumber !== undefined) event.versionNumber = versionNumber;
+      } else if (kind === 'approved') {
+        // The approval carries the reviewer's sign-off note (Phase 27).
+        const meta = l.metadata as { note?: string | null } | null;
+        if (meta?.note) event.message = meta.note;
       }
       events.push(event);
     }
@@ -917,6 +969,15 @@ export class SubmissionsService {
       normalizedData?: Record<string, unknown>;
       flags?: Diagnostic[];
       metadata?: Record<string, unknown>;
+      /**
+       * Runs inside the same transaction as the status change, after the
+       * submission (and any version snapshot) is written — so a side record
+       * (e.g. a Phase 27 sign-off) commits atomically with the transition.
+       */
+      afterCommit?: (
+        tx: Prisma.TransactionClient,
+        result: Prisma.ReportSubmissionGetPayload<{ include: typeof LIST_INCLUDE }>,
+      ) => Promise<void>;
     } = {},
   ) {
     const def = transitionFor(action);
@@ -964,6 +1025,7 @@ export class SubmissionsService {
           },
         });
       }
+      if (opts.afterCommit) await opts.afterCommit(tx, result);
       return result;
     });
 
@@ -986,15 +1048,16 @@ export class SubmissionsService {
   /** Load a submission a lab user owns; rejects cross-lab and admin-only paths. */
   private async loadForLab(id: string, user: AuthUser) {
     const submission = await this.load(id);
-    if (user.role !== RoleName.REGIONAL_LAB_HEAD || submission.laboratoryId !== user.laboratoryId) {
+    if (user.scope !== RoleScope.LAB || submission.laboratoryId !== user.laboratoryId) {
       throw new ForbiddenException('You can only act on your own laboratory\'s submissions');
     }
     return submission;
   }
 
   private assertAccess(submission: { laboratoryId: string }, user: AuthUser): void {
-    if (user.role === RoleName.BUREAU_ADMIN) return;
-    if (user.role === RoleName.REGIONAL_LAB_HEAD && submission.laboratoryId === user.laboratoryId) {
+    // Bureau scope sees across all laboratories; lab scope only its own.
+    if (user.scope === RoleScope.BUREAU) return;
+    if (user.scope === RoleScope.LAB && submission.laboratoryId === user.laboratoryId) {
       return;
     }
     throw new ForbiddenException('You cannot access this submission');

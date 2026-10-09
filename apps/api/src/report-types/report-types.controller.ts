@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { Roles } from '../common/decorators';
+import { RequireCapability } from '../common/decorators';
 import { ReportTypesService } from './report-types.service';
 import { CreateReportTypeDto, UpdateReportTypeDto } from './dto';
 
@@ -23,13 +22,13 @@ export class ReportTypesController {
   }
 
   @Post()
-  @Roles(RoleName.BUREAU_ADMIN)
+  @RequireCapability('manage_report_types')
   create(@Body() dto: CreateReportTypeDto) {
     return this.reportTypes.create(dto);
   }
 
   @Patch(':id')
-  @Roles(RoleName.BUREAU_ADMIN)
+  @RequireCapability('manage_report_types')
   update(@Param('id') id: string, @Body() dto: UpdateReportTypeDto) {
     return this.reportTypes.update(id, dto);
   }

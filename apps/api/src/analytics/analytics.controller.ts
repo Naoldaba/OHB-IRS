@@ -7,8 +7,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { RoleName } from '@ohb/shared';
-import { CurrentUser, Roles } from '../common/decorators';
+import { CurrentUser, RequireCapability } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { AnalyticsService } from './analytics.service';
 import { DashboardExportQueryDto, DashboardQueryDto, ReviewSlaQueryDto } from './dto';
@@ -17,11 +16,11 @@ import { renderAnalyticsExport } from './analytics-export';
 /**
  * Dashboards, compliance & analytics. The Bureau-wide view (Phase 8) is
  * BUREAU_ADMIN-only; the lab-scoped view (Phase 13) is for the lab head and is
- * forced to the signed-in user's own laboratory. The class default role is
- * BUREAU_ADMIN; the lab routes override it with a handler-level @Roles.
+ * forced to the signed-in user's own laboratory. The class default capability is
+ * `view_bureau_analytics`; the lab routes override it at the handler level.
  */
 @Controller('analytics')
-@Roles(RoleName.BUREAU_ADMIN)
+@RequireCapability('view_bureau_analytics')
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
 
@@ -61,7 +60,7 @@ export class AnalyticsController {
    * can only ever read their own laboratory's compliance.
    */
   @Get('my-lab')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('view_lab_analytics')
   myLab(@CurrentUser() user: AuthUser, @Query() query: DashboardQueryDto) {
     return this.analytics.dashboard({
       reportTypeId: query.reportTypeId,
@@ -72,7 +71,7 @@ export class AnalyticsController {
 
   /** Download the lab's own compliance figures (Phase 19), scoped server-side. */
   @Get('my-lab/export')
-  @Roles(RoleName.REGIONAL_LAB_HEAD)
+  @RequireCapability('view_lab_analytics')
   async exportMyLab(
     @CurrentUser() user: AuthUser,
     @Query() query: DashboardExportQueryDto,

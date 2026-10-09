@@ -3,191 +3,238 @@ import { PrismaClient } from '@prisma/client';
 import { hash } from 'bcryptjs';
 import {
   PeriodType,
-  ReportDefinitionStatus,
   RoleName,
-  SchemaSource,
-  ETHIOPIAN_MONTHS,
-  ethiopianMonthRange,
-  hivViralLoadDefinition,
-  toFieldSchema,
+  ROLE_CAPABILITIES,
+  SYSTEM_ROLE_SCOPES,
 } from '@ohb/shared';
 
 const prisma = new PrismaClient();
 
 /**
- * Regional laboratories from CLAUDE.md. Seeded as data, never hard-coded in
- * logic. Each carries the approximate [latitude, longitude] of its town so the
- * Phase 21 compliance map has something to plot on a fresh database; these are
- * seed defaults only — an admin manages coordinates through the Labs screen and
- * re-seeding never overwrites an edited value (coordinates are set on create).
+ * Seed = the minimal starting state:
+ *   - the two system roles (with their capability grants + scope),
+ *   - the nine regional laboratories (PHRRLC),
+ *   - one Bureau Administrator and one Regional Lab Head,
+ *   - the report-category tree and its leaf report types (from OHB_Report_Types).
+ * Nothing else (no reporting periods, requirements, submissions, definitions,
+ * feedback, notifications or audit entries) is created.
  */
+
+/** Regional laboratories. Coordinates are the approximate town location for the map. */
 const LABORATORIES: { name: string; coords: [number, number] }[] = [
-  { name: 'Adama', coords: [8.54, 39.27] },
-  { name: 'Neqemte', coords: [9.09, 36.55] },
-  { name: 'Shashemene', coords: [7.2, 38.6] },
-  { name: 'Fiche', coords: [9.8, 38.73] },
-  { name: 'Bulehora', coords: [5.58, 38.25] },
-  { name: 'Negele', coords: [5.33, 39.58] },
-  { name: 'Ginir', coords: [7.13, 40.7] },
-  { name: 'Yabelo', coords: [4.88, 38.08] },
-  { name: 'Dembidolo', coords: [8.53, 34.8] },
+  { name: 'Adama PHRRLC', coords: [8.54, 39.27] },
+  { name: 'Neqemte PHRRLC', coords: [9.09, 36.55] },
+  { name: 'Shashemene PHRRLC', coords: [7.2, 38.6] },
+  { name: 'Fiche PHRRLC', coords: [9.8, 38.73] },
+  { name: 'Bulehora PHRRLC', coords: [5.58, 38.25] },
+  { name: 'Negele PHRRLC', coords: [5.33, 39.58] },
+  { name: 'Ginir PHRRLC', coords: [7.13, 40.7] },
+  { name: 'Yabelo PHRRLC', coords: [4.88, 38.08] },
+  { name: 'Dembidolo PHRRLC', coords: [8.53, 34.8] },
 ];
+
+/** The laboratory the seeded Regional Lab Head belongs to. */
+const LABHEAD_LAB = 'Adama PHRRLC';
 
 function labCode(name: string): string {
   return name.trim().toUpperCase().replace(/\s+/g, '_');
 }
 
+/**
+ * Report-category tree (source: OHB_Report_Types). A node with children is a
+ * ReportCategory; a leaf is a ReportType created under its parent category. A
+ * top-level leaf is wrapped in a same-named category so the report type has a
+ * parent (ReportType requires a category).
+ */
+type Node = { name: string; children?: Node[] };
+
+/** A sample-referral test: Postal / Alternative referral means as leaf report types. */
+const referralTest = (name: string): Node => ({
+  name,
+  children: [{ name: 'Postal' }, { name: 'Alternative' }],
+});
+
+const REPORT_TREE: Node[] = [
+  {
+    name: 'Sample Referral',
+    children: [
+      referralTest('Viral load'),
+      referralTest('Tb Xpert'),
+      referralTest('EID'),
+      referralTest('CD4'),
+      referralTest('TB culture'),
+      referralTest('HBV'),
+      referralTest('HCV'),
+      referralTest('HPV'),
+    ],
+  },
+  {
+    name: 'EQA Data',
+    children: [
+      { name: 'Random Blind Rechecking(RBR)' },
+      {
+        name: 'Professional Test (PT)',
+        children: [
+          { name: 'International PT (IPT)' },
+          { name: 'National PT (NPT)' },
+          { name: 'Regional PT(RPT)' },
+        ],
+      },
+      { name: 'Onsite Evaluation(OSE)' },
+    ],
+  },
+  { name: 'BioSafety and BioSecurity' },
+  {
+    name: 'Training',
+    children: [
+      { name: 'Training Performance Report' },
+      { name: 'Training need' },
+    ],
+  },
+  {
+    name: 'Routine Lab Report',
+    children: [
+      { name: 'HIV Viral Load' },
+      { name: 'TB Molecular Testing' },
+      { name: 'Basic Culture and DST(Drug Susceptibility Test)' },
+      { name: 'Essential Lab Testing' },
+      { name: 'Water Test' },
+      { name: 'Malaria Microscopy and RDT' },
+      { name: 'HPV' },
+      { name: 'Hepatitis B viral load(HBV)' },
+      { name: 'Hepatitis C viral load(HCV)' },
+      { name: 'CD4' },
+      { name: 'CrAg' },
+      { name: 'Chemistry' },
+      { name: 'IA(Immuno Assy)' },
+      { name: 'CBC' },
+    ],
+  },
+  {
+    name: 'Mentorship',
+    children: [
+      { name: 'SLIPTA Mentorship' },
+      { name: 'LQMS Mentorship' },
+      { name: 'Clinical Mentorship' },
+    ],
+  },
+  { name: 'Supportive Supervision' },
+];
+
+/** A unique, stable report-type code from the full path (segments joined by `__`). */
+function codeFromPath(path: string[]): string {
+  return path
+    .map((s) => s.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, ''))
+    .join('__');
+}
+
+/** Recursively create a node: a category when it has children, else a report type. */
+async function createNode(node: Node, parentCategoryId: string | null, path: string[]) {
+  const here = [...path, node.name];
+  if (node.children && node.children.length > 0) {
+    const category = await prisma.reportCategory.create({
+      data: { name: node.name, parentId: parentCategoryId },
+    });
+    for (const child of node.children) {
+      await createNode(child, category.id, here);
+    }
+    return;
+  }
+
+  // Leaf → report type. A report type must have a category; a top-level leaf is
+  // wrapped in a same-named category so it has a parent.
+  let categoryId = parentCategoryId;
+  if (!categoryId) {
+    const wrapper = await prisma.reportCategory.create({
+      data: { name: node.name, parentId: null },
+    });
+    categoryId = wrapper.id;
+  }
+  await prisma.reportType.create({
+    data: {
+      categoryId,
+      code: codeFromPath(here),
+      name: node.name,
+      defaultFrequency: PeriodType.MONTHLY,
+      isActive: true,
+    },
+  });
+}
+
 async function main() {
-  // Roles
-  const roles = [
-    { name: RoleName.BUREAU_ADMIN, description: 'Oromia Health Bureau administrator' },
-    { name: RoleName.REGIONAL_LAB_HEAD, description: 'Regional laboratory head' },
-  ];
-  for (const r of roles) {
-    await prisma.role.upsert({
-      where: { name: r.name },
-      update: { description: r.description },
-      create: r,
+  // Roles — the two system roles with their scope and capability grants.
+  const roleIdByName: Record<string, string> = {};
+  const roleDescriptions: Record<RoleName, string> = {
+    [RoleName.BUREAU_ADMIN]: 'Oromia Health Bureau administrator',
+    [RoleName.REGIONAL_LAB_HEAD]: 'Regional laboratory head',
+  };
+  for (const name of [RoleName.BUREAU_ADMIN, RoleName.REGIONAL_LAB_HEAD] as RoleName[]) {
+    const role = await prisma.role.create({
+      data: {
+        name,
+        description: roleDescriptions[name],
+        scope: SYSTEM_ROLE_SCOPES[name],
+        isSystem: true,
+        isActive: true,
+        permissions: {
+          create: (ROLE_CAPABILITIES[name] ?? []).map((capabilityKey) => ({ capabilityKey })),
+        },
+      },
     });
+    roleIdByName[name] = role.id;
   }
-  const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: RoleName.BUREAU_ADMIN } });
-  const labRole = await prisma.role.findUniqueOrThrow({ where: { name: RoleName.REGIONAL_LAB_HEAD } });
 
-  // Laboratories. Coordinates are backfilled only where still unset, so a fresh
-  // database is plottable immediately while an admin's later edits are never
-  // overwritten by a re-seed.
+  // Laboratories.
+  const labIdByName = new Map<string, string>();
   for (const { name, coords } of LABORATORIES) {
-    await prisma.laboratory.upsert({
-      where: { name },
-      update: {},
-      create: { name, code: labCode(name), latitude: coords[0], longitude: coords[1] },
+    const lab = await prisma.laboratory.create({
+      data: { name, code: labCode(name), latitude: coords[0], longitude: coords[1] },
     });
-    await prisma.laboratory.updateMany({
-      where: { name, latitude: null, longitude: null },
-      data: { latitude: coords[0], longitude: coords[1] },
-    });
+    labIdByName.set(name, lab.id);
   }
 
-  // Initial Bureau Administrator
+  // One Bureau Administrator.
   const adminEmail = (process.env.SEED_ADMIN_EMAIL ?? 'admin@ohb.local').toLowerCase();
-  const admin = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: {
+  await prisma.user.create({
+    data: {
       email: adminEmail,
       passwordHash: await hash(process.env.SEED_ADMIN_PASSWORD ?? 'Admin@12345', 10),
       fullName: process.env.SEED_ADMIN_NAME ?? 'Bureau Administrator',
-      roleId: adminRole.id,
+      roleId: roleIdByName[RoleName.BUREAU_ADMIN],
     },
   });
 
-  // One test Regional Lab Head (for verifying lab-scoped access locally)
-  const labName = process.env.SEED_LABHEAD_LAB ?? 'Adama';
-  const lab = await prisma.laboratory.findUnique({ where: { name: labName } });
-  if (lab) {
-    const labEmail = (process.env.SEED_LABHEAD_EMAIL ?? 'labhead@ohb.local').toLowerCase();
-    await prisma.user.upsert({
-      where: { email: labEmail },
-      update: {},
-      create: {
-        email: labEmail,
-        passwordHash: await hash(process.env.SEED_LABHEAD_PASSWORD ?? 'Lab@12345', 10),
-        fullName: process.env.SEED_LABHEAD_NAME ?? 'Lab Head',
-        roleId: labRole.id,
-        laboratoryId: lab.id,
-      },
-    });
+  // One Regional Lab Head, assigned to a laboratory.
+  const labHeadLabId = labIdByName.get(LABHEAD_LAB);
+  if (!labHeadLabId) throw new Error(`Lab-head laboratory not found: ${LABHEAD_LAB}`);
+  const labEmail = (process.env.SEED_LABHEAD_EMAIL ?? 'labhead@ohb.local').toLowerCase();
+  await prisma.user.create({
+    data: {
+      email: labEmail,
+      passwordHash: await hash(process.env.SEED_LABHEAD_PASSWORD ?? 'Lab@12345', 10),
+      fullName: process.env.SEED_LABHEAD_NAME ?? 'Lab Head',
+      roleId: roleIdByName[RoleName.REGIONAL_LAB_HEAD],
+      laboratoryId: labHeadLabId,
+    },
+  });
+
+  // Report-category tree + leaf report types.
+  for (const node of REPORT_TREE) {
+    await createNode(node, null, []);
   }
 
-  // ---- Reference report: HIV Viral Load (Phase 3 verification seed) ---------
-  // Seeds the report type plus a PUBLISHED definition version (schema snapshot
-  // from the code registry) so a lab can create/fill/submit through the full
-  // lifecycle before the admin Report Builder (Phase 4) exists. Phase 4 verifies
-  // the admin can author the same structure through the UI with no code.
-  // Categories now form a tree (names are unique per-parent, not globally), so
-  // this seed category is a top-level node looked up by name among the roots.
-  const category =
-    (await prisma.reportCategory.findFirst({
-      where: { name: hivViralLoadDefinition.category, parentId: null },
-    })) ??
-    (await prisma.reportCategory.create({
-      data: { name: hivViralLoadDefinition.category },
-    }));
-
-  const reportType = await prisma.reportType.upsert({
-    where: { code: hivViralLoadDefinition.code },
-    update: {},
-    create: {
-      code: hivViralLoadDefinition.code,
-      name: hivViralLoadDefinition.name,
-      categoryId: category.id,
-      defaultFrequency: hivViralLoadDefinition.defaultFrequency,
-    },
-  });
-
-  // A single published v1 definition, pinned by submissions created against it.
-  await prisma.reportDefinitionVersion.upsert({
-    where: { reportTypeId_version: { reportTypeId: reportType.id, version: 1 } },
-    update: {},
-    create: {
-      reportTypeId: reportType.id,
-      version: 1,
-      status: ReportDefinitionStatus.PUBLISHED,
-      schemaSource: SchemaSource.REGISTRY,
-      fieldSchema: toFieldSchema(hivViralLoadDefinition) as object,
-      createdById: admin.id,
-      publishedById: admin.id,
-      publishedAt: new Date(),
-    },
-  });
-
-  // A sample monthly reporting period (Ethiopian year 2017, month 1 / Fulbaana).
-  const periodYear = 2017;
-  const periodNumber = 1;
-  const range = ethiopianMonthRange(periodYear, periodNumber);
-  await prisma.reportingPeriod.upsert({
-    where: {
-      reportTypeId_year_periodNumber: {
-        reportTypeId: reportType.id,
-        year: periodYear,
-        periodNumber,
-      },
-    },
-    update: {},
-    create: {
-      reportTypeId: reportType.id,
-      periodType: PeriodType.MONTHLY,
-      year: periodYear,
-      periodNumber,
-      label: `${ETHIOPIAN_MONTHS[periodNumber - 1]} ${periodYear}`,
-      startDate: range.start,
-      endDate: range.endExclusive,
-      dueDate: range.endExclusive,
-    },
-  });
-
-  // Expectation: every active laboratory submits this report (laboratoryId null).
-  const existingRequirement = await prisma.reportingRequirement.findFirst({
-    where: { reportTypeId: reportType.id, laboratoryId: null },
-  });
-  if (!existingRequirement) {
-    await prisma.reportingRequirement.create({
-      data: { reportTypeId: reportType.id, laboratoryId: null },
-    });
-  }
-
-  const labCount = await prisma.laboratory.count();
-  const userCount = await prisma.user.count();
-  const reportTypeCount = await prisma.reportType.count();
-  // eslint-disable-next-line no-console
+  const [categories, reportTypes] = await Promise.all([
+    prisma.reportCategory.count(),
+    prisma.reportType.count(),
+  ]);
   console.log(
-    `Seed complete: ${labCount} laboratories, ${userCount} users, ${reportTypeCount} report type(s).`,
+    `Seeded: 2 roles, ${LABORATORIES.length} laboratories, 2 users, ` +
+      `${categories} categories, ${reportTypes} report types.`,
   );
 }
 
 main()
   .catch((e) => {
-    // eslint-disable-next-line no-console
     console.error(e);
     process.exit(1);
   })

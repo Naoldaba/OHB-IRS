@@ -56,6 +56,26 @@ export class RequestRevisionDto {
   fieldKey?: string;
 }
 
+/**
+ * Body for `POST /submissions/:id/review/approve` (Phase 27). Approving a report
+ * records an accountable digital sign-off. The reviewer re-affirms the approval
+ * by typing their own full name (validated server-side against the signed-in
+ * user), with an optional note. No cryptographic signature — a typed-name
+ * affirmation only, per the plan.
+ */
+export class ApproveSubmissionDto {
+  /** Typed full-name affirmation; must match the signed-in reviewer's name. */
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  confirmName: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  note?: string;
+}
+
 export class AddFeedbackDto {
   @IsString()
   @MinLength(1)

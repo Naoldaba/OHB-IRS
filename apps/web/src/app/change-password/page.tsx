@@ -48,7 +48,7 @@ export default function ChangePasswordPage() {
     try {
       await api.post('/auth/change-password', { currentPassword, newPassword });
       await refresh();
-      router.replace(homeFor(user.role));
+      router.replace(homeFor(user.scope));
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : 'Something went wrong. Please try again.',

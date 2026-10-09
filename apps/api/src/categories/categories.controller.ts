@@ -7,15 +7,14 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { Roles, CurrentUser } from '../common/decorators';
+import { RequireCapability, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto';
 
-/** Report category administration. Admin-only (lab users get 403). */
+/** Report category administration. Requires `manage_categories` (lab users get 403). */
 @Controller('report-categories')
-@Roles(RoleName.BUREAU_ADMIN)
+@RequireCapability('manage_categories')
 export class CategoriesController {
   constructor(private readonly categories: CategoriesService) {}
 

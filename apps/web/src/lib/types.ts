@@ -15,6 +15,7 @@ import type {
   ReportDefinitionStatus,
   ReportStatus,
   RoleName,
+  RoleScope,
 } from '@ohb/shared';
 
 /** A FLAG-severity rule outcome snapshotted on a submission at submit time. */
@@ -25,6 +26,10 @@ export interface AuthUser {
   email: string;
   fullName: string;
   role: RoleName;
+  /** The role's data boundary (Phase 28b): a RoleScope value (BUREAU | LAB). */
+  scope: RoleScope;
+  /** Capability keys granted to the user's role (Phase 28). */
+  capabilities: string[];
   laboratoryId: string | null;
   /** Public URL of the user's profile picture, or null when none is set. */
   avatarUrl: string | null;
@@ -76,7 +81,7 @@ export interface User {
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;
-  role: { id: string; name: RoleName };
+  role: { id: string; name: string; scope?: RoleScope };
   laboratory?: { id: string; name: string; code: string } | null;
 }
 
@@ -199,7 +204,7 @@ export interface Feedback {
 export interface MentionableUser {
   id: string;
   fullName: string;
-  role: RoleName;
+  role: string;
 }
 
 /** A supporting document attached to a submission (optionally anchored to a section). */
@@ -225,11 +230,28 @@ export interface SubmissionVersionRow {
   submittedBy?: { id: string; fullName: string };
 }
 
+/**
+ * An immutable digital sign-off recorded when a reviewer approved the submission
+ * (Phase 27): who signed, when, the version signed, a typed-name affirmation and
+ * an optional note. Append-only — kept as part of the submission's history.
+ */
+export interface SignOff {
+  id: string;
+  submissionId: string;
+  versionNumber: number;
+  confirmedName: string;
+  note: string | null;
+  createdAt: string;
+  signedBy?: { id: string; fullName: string };
+  definitionVersion?: { version: number } | null;
+}
+
 export interface SubmissionDetail extends SubmissionSummary {
   data: Record<string, unknown>;
   schema: FieldSchema | null;
   renderModel: RenderModel | null;
   feedback: Feedback[];
+  signOffs: SignOff[];
 }
 
 export interface SaveDraftResponse {

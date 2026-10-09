@@ -2,17 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Bell, Camera, Check, Lock, Mail, Trash2 } from 'lucide-react';
-import { RoleName } from '@ohb/shared';
+import { ROLE_META } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
 import type { AuthUser } from '@/lib/types';
 import { Avatar, Button, Callout, Card, Field, SegmentedToggle, Spinner } from '@/components/ui';
 import { TwoFactorCard } from '@/components/TwoFactorCard';
 
-const ROLE_LABEL: Record<RoleName, string> = {
-  [RoleName.BUREAU_ADMIN]: 'Bureau Administrator',
-  [RoleName.REGIONAL_LAB_HEAD]: 'Regional Lab Head',
-};
+/** Display label for a role name — nice labels for the system roles, else the name. */
+function roleLabel(name: string): string {
+  return (ROLE_META as Record<string, { label: string }>)[name]?.label ?? name;
+}
 
 const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -124,7 +124,7 @@ function IdentityCard({
           <div style={{ marginTop: 6 }}>
             <span className="pill pill--slate">
               <span className="pill__dot" />
-              {ROLE_LABEL[user.role]}
+              {roleLabel(user.role)}
             </span>
           </div>
         </div>

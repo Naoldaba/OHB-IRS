@@ -6,19 +6,18 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { Roles, CurrentUser } from '../common/decorators';
+import { RequireCapability, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { LabsService } from './labs.service';
 import { CreateLabDto, UpdateLabDto } from './dto';
 
 /**
- * Laboratory administration. Admin-only: lab users receive 403 via RolesGuard.
+ * Laboratory administration. Requires `manage_laboratories` (lab users get 403).
  * Laboratories are never hard-deleted (they anchor submissions and audit
  * history); use isActive to retire one.
  */
 @Controller('labs')
-@Roles(RoleName.BUREAU_ADMIN)
+@RequireCapability('manage_laboratories')
 export class LabsController {
   constructor(private readonly labs: LabsService) {}
 

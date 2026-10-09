@@ -10,6 +10,18 @@ export enum RoleName {
 }
 
 /**
+ * The data boundary a role grants (Phase 28b) — independent of its capabilities.
+ * BUREAU sees across all laboratories (and uses the admin portal); LAB is
+ * confined to the user's own `laboratoryId` (and uses the lab portal). Custom
+ * roles pick a scope at creation; the two system roles keep BUREAU / LAB.
+ * Persisted on `Role.scope`; keep the string values stable.
+ */
+export enum RoleScope {
+  BUREAU = 'BUREAU',
+  LAB = 'LAB',
+}
+
+/**
  * Report lifecycle as defined in CLAUDE.md. Do not add states without a
  * feature that requires them.
  *
@@ -117,6 +129,11 @@ export enum AuditAction {
   CATEGORY_DELETED = 'CATEGORY_DELETED',
   USER_CREATED = 'USER_CREATED',
   USER_UPDATED = 'USER_UPDATED',
+  ROLE_ASSIGNED = 'ROLE_ASSIGNED',
+  ROLE_PERMISSIONS_UPDATED = 'ROLE_PERMISSIONS_UPDATED',
+  ROLE_CREATED = 'ROLE_CREATED',
+  ROLE_UPDATED = 'ROLE_UPDATED',
+  ROLE_DELETED = 'ROLE_DELETED',
   REPORT_CREATED = 'REPORT_CREATED',
   REPORT_UPDATED = 'REPORT_UPDATED',
   REPORT_SUBMITTED = 'REPORT_SUBMITTED',
@@ -127,6 +144,7 @@ export enum AuditAction {
   REPORT_REVISION_REQUESTED = 'REPORT_REVISION_REQUESTED',
   REPORT_RESUBMITTED = 'REPORT_RESUBMITTED',
   REPORT_APPROVED = 'REPORT_APPROVED',
+  REPORT_SIGNED_OFF = 'REPORT_SIGNED_OFF',
   REPORT_EXPORTED = 'REPORT_EXPORTED',
   REPORT_ATTACHMENT_ADDED = 'REPORT_ATTACHMENT_ADDED',
   REPORT_ATTACHMENT_REMOVED = 'REPORT_ATTACHMENT_REMOVED',

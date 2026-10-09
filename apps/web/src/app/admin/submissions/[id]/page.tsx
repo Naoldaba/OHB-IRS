@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Check, Flag, MessageSquare, PlayCircle, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Flag, MessageSquare, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
 import { ReportStatus } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { MentionableUser, SubmissionDetail } from '@/lib/types';
-import { Button, Callout, Card, Field, Pill, Select, Spinner, StatusPill, Textarea } from '@/components/ui';
+import { Button, Callout, Card, Field, Input, Pill, Select, Spinner, StatusPill, Textarea } from '@/components/ui';
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { FeedbackList } from '@/components/report/FeedbackList';
 import { MentionTextarea, extractMentionIds } from '@/components/report/MentionTextarea';
 import { VersionHistory } from '@/components/report/VersionHistory';
 import { SubmissionTimeline } from '@/components/report/SubmissionTimeline';
+import { SignOffCard } from '@/components/report/SignOffCard';
 import { ExportMenu } from '@/components/report/ExportMenu';
 import { AttachmentsPanel } from '@/components/report/AttachmentsPanel';
 import { anchorOptions } from '@/components/report/anchors';
@@ -19,6 +21,7 @@ import { anchorOptions } from '@/components/report/anchors';
 export default function AdminSubmissionDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { user } = useAuth();
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,6 +29,8 @@ export default function AdminSubmissionDetail() {
   const [commentAnchor, setCommentAnchor] = useState('');
   const [revision, setRevision] = useState('');
   const [revisionAnchor, setRevisionAnchor] = useState('');
+  const [signName, setSignName] = useState('');
+  const [signNote, setSignNote] = useState('');
   const [mentionables, setMentionables] = useState<MentionableUser[]>([]);
 
   const load = useCallback(async () => {
@@ -163,6 +168,8 @@ export default function AdminSubmissionDetail() {
         </div>
 
         <div className="stack" style={{ gap: 20 }}>
+          <SignOffCard signOffs={detail.signOffs} />
+
           {flags.length > 0 && (
             <Card title="Flagged for review">
               <div className="text-sm muted" style={{ marginBottom: 10 }}>
@@ -203,12 +210,39 @@ export default function AdminSubmissionDetail() {
 
             {canReview && (
               <div className="stack">
+                <Field
+                  label="Approve &amp; sign off"
+                  hint="Completing the review records an accountable, dated sign-off. Type your full name to confirm."
+                >
+                  <Input
+                    value={signName}
+                    onChange={(e) => setSignName(e.target.value)}
+                    placeholder={user?.fullName ?? 'Your full name'}
+                    autoComplete="off"
+                  />
+                </Field>
+                <Field label="Sign-off note (optional)">
+                  <Textarea
+                    value={signNote}
+                    onChange={(e) => setSignNote(e.target.value)}
+                    placeholder="Any note to accompany the approval…"
+                  />
+                </Field>
                 <Button
                   block
-                  onClick={() => act(() => api.post(`/submissions/${id}/review/approve`))}
-                  disabled={busy}
+                  disabled={busy || !signName.trim()}
+                  onClick={() =>
+                    act(async () => {
+                      await api.post(`/submissions/${id}/review/approve`, {
+                        confirmName: signName.trim(),
+                        note: signNote.trim() || undefined,
+                      });
+                      setSignName('');
+                      setSignNote('');
+                    })
+                  }
                 >
-                  <Check size={16} /> Approve
+                  <ShieldCheck size={16} /> Approve &amp; sign off
                 </Button>
                 <div className="divider" />
                 <Field label="Request revision" hint="Explain what needs to change.">

@@ -272,6 +272,70 @@ h4 {
   background: var(--surface-muted);
 }
 
+/* Collapsible nav group (header dropdown, e.g. Administration). */
+.nav__group {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.nav__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 7px 10px 7px 12px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  font-family: inherit;
+}
+.nav__trigger:hover {
+  background: var(--surface-muted);
+}
+.nav__trigger.active {
+  color: var(--primary);
+  background: var(--surface-muted);
+}
+.nav__chevron {
+  transition: transform 0.15s ease;
+}
+.nav__trigger[aria-expanded='true'] .nav__chevron {
+  transform: rotate(180deg);
+}
+.nav__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  z-index: 50;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nav__menu a {
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+}
+.nav__menu a:hover {
+  background: var(--surface-muted);
+  text-decoration: none;
+}
+.nav__menu a.active {
+  color: var(--primary);
+  background: var(--surface-muted);
+}
+
 .app-header__spacer {
   flex: 1;
 }
@@ -477,6 +541,220 @@ h4 {
 .notif__item-time {
   font-size: 11px;
   color: var(--text-faint);
+}
+
+/* ---- Global search (header) ---- */
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search__icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+.search__input {
+  width: 230px;
+  max-width: 40vw;
+  padding: 7px 28px 7px 30px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, width 0.15s;
+}
+.search__input::placeholder {
+  color: var(--text-faint);
+}
+.search__input:focus {
+  border-color: var(--primary-accent);
+  box-shadow: 0 0 0 3px rgba(28, 122, 84, 0.12);
+}
+/* Hide the native search clear control; we render our own. */
+.search__input::-webkit-search-decoration,
+.search__input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search__clear {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 6px;
+}
+.search__clear:hover {
+  color: var(--text);
+  background: var(--border);
+}
+.search__panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  z-index: 50;
+  overflow: hidden;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.search__empty {
+  margin: 0;
+  padding: 24px 14px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.search__group {
+  border-bottom: 1px solid var(--border);
+}
+.search__group:last-child {
+  border-bottom: none;
+}
+.search__group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface-muted);
+}
+.search__item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.search__item:hover {
+  background: var(--surface-muted);
+}
+.search__item-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.35;
+}
+.search__item-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.search__pill {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+@media (max-width: 720px) {
+  .search__input {
+    width: 150px;
+  }
+}
+
+/* ---- Roles & permissions (Phase 26) ---- */
+.role-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+.role-card__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.role-card__stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.perm-matrix td,
+.perm-matrix th {
+  vertical-align: top;
+}
+.perm-matrix__group td {
+  padding-top: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  background: var(--surface-muted);
+}
+.perm-matrix__desc {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.perm-matrix__yes {
+  color: var(--status-green, var(--primary-accent));
+  vertical-align: middle;
+}
+.perm-matrix__no {
+  color: var(--text-faint);
+  vertical-align: middle;
+}
+.perm-matrix__check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+  vertical-align: middle;
+}
+.perm-matrix__check:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.perm-matrix tfoot .btn {
+  white-space: nowrap;
+}
+.perm-matrix__rolescope {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+/* Horizontal scroll container for wide tables (e.g. the permission matrix with
+   many custom-role columns) so the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
 }
 
 /* ---- Export dropdown ---- */
@@ -1211,8 +1489,8 @@ h4 {
 }
 .auth-card {
   width: 100%;
-  max-width: 480px;
-  min-height: 480px;
+  max-width: 500px;
+  min-height: 500px;
 }
 .auth-card .brand {
   margin-bottom: 20px;

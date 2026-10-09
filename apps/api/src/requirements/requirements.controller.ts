@@ -1,12 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { Roles } from '../common/decorators';
+import { RequireCapability } from '../common/decorators';
 import { RequirementsService } from './requirements.service';
 import { CreateRequirementDto, UpdateRequirementDto } from './dto';
 
-/** Reporting requirement administration. BUREAU_ADMIN only. */
+/** Reporting requirement administration. Requires `manage_requirements`. */
 @Controller('reporting-requirements')
-@Roles(RoleName.BUREAU_ADMIN)
+@RequireCapability('manage_requirements')
 export class RequirementsController {
   constructor(private readonly requirements: RequirementsService) {}
 

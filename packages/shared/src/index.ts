@@ -1,5 +1,7 @@
 export * from './enums';
 export * from './ethiopian-date';
+export * from './search';
+export * from './permissions';
 export * from './reports/matrix-types';
 export * from './reports/validate-matrix';
 export * from './reports/field-schema';

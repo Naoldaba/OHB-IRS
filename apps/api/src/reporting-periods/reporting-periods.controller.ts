@@ -1,6 +1,5 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { RoleName } from '@ohb/shared';
-import { Roles } from '../common/decorators';
+import { RequireCapability } from '../common/decorators';
 import { ReportingPeriodsService } from './reporting-periods.service';
 import { CreateReportingPeriodDto } from './dto';
 
@@ -23,7 +22,7 @@ export class ReportingPeriodsController {
   }
 
   @Post()
-  @Roles(RoleName.BUREAU_ADMIN)
+  @RequireCapability('manage_periods')
   create(@Body() dto: CreateReportingPeriodDto) {
     return this.periods.create(dto);
   }
