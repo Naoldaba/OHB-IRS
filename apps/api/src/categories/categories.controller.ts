@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { RoleName } from '@ohb/shared';
-import { Roles } from '../common/decorators';
+import { Roles, CurrentUser } from '../common/decorators';
+import { AuthUser } from '../common/auth-user';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto';
 
@@ -21,12 +30,21 @@ export class CategoriesController {
   }
 
   @Post()
-  create(@Body() dto: CreateCategoryDto) {
-    return this.categories.create(dto);
+  create(@Body() dto: CreateCategoryDto, @CurrentUser() user: AuthUser) {
+    return this.categories.create(dto, user.id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateCategoryDto) {
-    return this.categories.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCategoryDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.categories.update(id, dto, user.id);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.categories.remove(id, user.id);
   }
 }

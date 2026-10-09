@@ -85,8 +85,10 @@ export interface ReportCategory {
   code: string;
   name: string;
   description?: string | null;
+  /** Self-referential tree: null parentId = top-level category. */
+  parentId?: string | null;
   /** Present on the admin list endpoint. */
-  _count?: { reportTypes: number };
+  _count?: { reportTypes: number; children?: number };
 }
 
 export interface ReportType {

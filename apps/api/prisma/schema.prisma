@@ -119,12 +119,21 @@ model TwoFactorRecoveryCode {
 }
 
 model ReportCategory {
-  id            String         @id @default(cuid())
-  name          String         @unique
+  id            String           @id @default(cuid())
+  name          String
   description   String?
-  createdAt     DateTime       @default(now())
+  // Self-referential adjacency list: a category may nest under a parent to
+  // arbitrary depth (null parentId = top-level). Names are unique within a
+  // parent, not globally.
+  parentId      String?
+  parent        ReportCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children      ReportCategory[] @relation("CategoryTree")
+  createdAt     DateTime         @default(now())
   reportTypes   ReportType[]
   ruleTemplates RuleTemplate[]
+
+  @@unique([parentId, name])
+  @@index([parentId])
 }
 
 model ReportType {

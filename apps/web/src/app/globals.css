@@ -980,6 +980,72 @@ h4 {
   padding: 32px 12px;
 }
 
+/* ---- Category tree (collapsible, overflow-safe) ---- */
+.cat-tree {
+  border-top: 1px solid var(--border);
+}
+.cat-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.cat-row__main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cat-row__toggle {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cat-row__toggle:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+}
+.cat-row__toggle--leaf {
+  cursor: default;
+}
+.cat-row__text {
+  min-width: 0;
+}
+.cat-row__name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cat-row__desc {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cat-row__actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cat-edit {
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* ---- Matrix / report renderer ---- */
 .matrix-wrap {
   overflow-x: auto;

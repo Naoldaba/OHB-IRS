@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
-import { PeriodType, ETHIOPIAN_MONTHS } from '@ohb/shared';
+import { PeriodType, ETHIOPIAN_MONTHS, toEthiopian } from '@ohb/shared';
+
+/** Current Ethiopian year, used as the default when opening a new period. */
+const CURRENT_ETHIOPIAN_YEAR = toEthiopian(new Date()).year;
 import { api, ApiError } from '@/lib/api';
 import type { ReportType, ReportingPeriod } from '@/lib/types';
 import { Button, Callout, Card, Field, Pill, Spinner } from '@/components/ui';
@@ -127,7 +130,7 @@ function NewPeriodCard({
   onCreated: () => Promise<void>;
 }) {
   const [periodType, setPeriodType] = useState<PeriodType>(reportType.defaultFrequency);
-  const [year, setYear] = useState(2017);
+  const [year, setYear] = useState(CURRENT_ETHIOPIAN_YEAR);
   const [periodNumber, setPeriodNumber] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -177,14 +180,15 @@ function NewPeriodCard({
             ))}
           </select>
         </Field>
-        <Field label="Ethiopian year" hint="e.g. 2017 E.C.">
+        <Field label="Ethiopian year" hint={`e.g. ${CURRENT_ETHIOPIAN_YEAR} E.C.`}>
           <input
             className="input"
             type="number"
-            min={1900}
+            min={2010}
             max={2200}
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
+            placeholder={String(CURRENT_ETHIOPIAN_YEAR)}
             required
           />
         </Field>

@@ -104,11 +104,15 @@ async function main() {
   // from the code registry) so a lab can create/fill/submit through the full
   // lifecycle before the admin Report Builder (Phase 4) exists. Phase 4 verifies
   // the admin can author the same structure through the UI with no code.
-  const category = await prisma.reportCategory.upsert({
-    where: { name: hivViralLoadDefinition.category },
-    update: {},
-    create: { name: hivViralLoadDefinition.category },
-  });
+  // Categories now form a tree (names are unique per-parent, not globally), so
+  // this seed category is a top-level node looked up by name among the roots.
+  const category =
+    (await prisma.reportCategory.findFirst({
+      where: { name: hivViralLoadDefinition.category, parentId: null },
+    })) ??
+    (await prisma.reportCategory.create({
+      data: { name: hivViralLoadDefinition.category },
+    }));
 
   const reportType = await prisma.reportType.upsert({
     where: { code: hivViralLoadDefinition.code },
