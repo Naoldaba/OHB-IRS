@@ -9,4 +9,6 @@ export interface AuthUser {
   avatarUrl: string | null;
   /** When true, the user must change their password before doing anything else. */
   mustChangePassword: boolean;
+  /** When true, the account has TOTP two-step verification enabled. */
+  twoFactorEnabled: boolean;
 }

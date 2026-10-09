@@ -36,8 +36,19 @@ export class AuthService {
     private readonly mail: MailService,
   ) {}
 
-  /** Validates credentials and returns the authenticated principal. */
-  async validate(email: string, password: string): Promise<AuthUser> {
+  /**
+   * First login step: validates credentials. When the account has two-step
+   * verification enabled, login is NOT completed here — the caller must hold the
+   * user in a pending state and complete it via {@link completeLogin} only after
+   * a successful second-factor challenge. Otherwise login is completed inline.
+   */
+  async beginLogin(
+    email: string,
+    password: string,
+  ): Promise<
+    | { status: 'OK'; user: AuthUser }
+    | { status: 'TWO_FACTOR_REQUIRED'; userId: string }
+  > {
     const user = await this.prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
       include: { role: true },
@@ -48,12 +59,32 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    if (user.twoFactorEnabled) {
+      // Defer the session + LOGIN audit until the second factor is verified.
+      return { status: 'TWO_FACTOR_REQUIRED', userId: user.id };
+    }
+
+    return { status: 'OK', user: await this.completeLogin(user.id) };
+  }
+
+  /**
+   * Finalizes a login once the principal is fully authenticated (credentials,
+   * and the second factor when 2FA is on). Records last-login + the LOGIN audit
+   * and returns the session principal. Re-validates the account is still active.
+   */
+  async completeLogin(userId: string): Promise<AuthUser> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true },
+    });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Session is no longer valid');
+    }
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
     await this.audit.record({ action: AuditAction.LOGIN, actorId: user.id });
-
     return this.toAuthUser(user);
   }
 
@@ -177,6 +208,7 @@ export class AuthService {
     laboratoryId: string | null;
     avatarUrl: string | null;
     mustChangePassword: boolean;
+    twoFactorEnabled: boolean;
   }): AuthUser {
     return {
       id: user.id,
@@ -186,6 +218,7 @@ export class AuthService {
       laboratoryId: user.laboratoryId,
       avatarUrl: user.avatarUrl,
       mustChangePassword: user.mustChangePassword,
+      twoFactorEnabled: user.twoFactorEnabled,
     };
   }
 

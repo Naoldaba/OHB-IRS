@@ -47,6 +47,15 @@ model User {
   // Set when an admin creates the account or resets the password; forces a
   // self-service change at next login before any other action is permitted.
   mustChangePassword Boolean @default(false)
+  // --- TOTP two-step verification (opt-in, all roles) ---
+  // twoFactorEnabled flips true only after a setup code is confirmed. While
+  // enabled, twoFactorSecret holds the confirmed base32 TOTP secret;
+  // twoFactorPendingSecret holds an in-progress enrollment secret not yet
+  // confirmed (cleared on enable/cancel). Both secrets are null when 2FA is off.
+  twoFactorEnabled       Boolean   @default(false)
+  twoFactorSecret        String?
+  twoFactorPendingSecret String?
+  twoFactorEnabledAt     DateTime?
   lastLoginAt  DateTime?
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
@@ -63,6 +72,7 @@ model User {
   notifications          Notification[] @relation("notificationRecipient")
   triggeredNotifications Notification[] @relation("notificationActor")
   passwordResetTokens    PasswordResetToken[] @relation("resetTokenUser")
+  twoFactorRecoveryCodes TwoFactorRecoveryCode[] @relation("recoveryCodeUser")
 
   @@index([roleId])
   @@index([laboratoryId])
@@ -80,6 +90,20 @@ model PasswordResetToken {
   // SHA-256 hex of the opaque token sent in the email link.
   tokenHash String    @unique
   expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Single-use recovery (backup) codes for 2FA, generated at enrollment and shown
+// to the user once. Only the SHA-256 hash of each code is stored. A code is
+// consumed (usedAt set) the first time it is accepted at the login challenge.
+model TwoFactorRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation("recoveryCodeUser", fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
   usedAt    DateTime?
   createdAt DateTime  @default(now())
 

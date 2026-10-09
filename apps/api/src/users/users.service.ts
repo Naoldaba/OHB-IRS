@@ -19,6 +19,7 @@ const PUBLIC_USER_SELECT = {
   fullName: true,
   avatarUrl: true,
   isActive: true,
+  twoFactorEnabled: true,
   lastLoginAt: true,
   createdAt: true,
   updatedAt: true,

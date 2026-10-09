@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -9,6 +10,7 @@ import {
 import { RoleName } from '@ohb/shared';
 import { Roles, CurrentUser } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
+import { TwoFactorService } from '../auth/two-factor.service';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
 
@@ -20,7 +22,10 @@ import { CreateUserDto, UpdateUserDto } from './dto';
 @Controller('users')
 @Roles(RoleName.BUREAU_ADMIN)
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly twoFactor: TwoFactorService,
+  ) {}
 
   @Get()
   list() {
@@ -44,5 +49,16 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ) {
     return this.users.update(id, dto, actor.id);
+  }
+
+  /**
+   * Admin recovery path: clear a user's two-step verification (e.g. lost
+   * authenticator). The user can re-enroll afterwards from their profile.
+   */
+  @Post(':id/reset-2fa')
+  @HttpCode(200)
+  async resetTwoFactor(@Param('id') id: string, @CurrentUser() actor: AuthUser) {
+    await this.twoFactor.adminReset(id, actor.id);
+    return { ok: true };
   }
 }

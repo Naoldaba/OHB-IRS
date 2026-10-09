@@ -19,10 +19,16 @@ import { RoleName } from '@ohb/shared';
 import { api, ApiError } from './api';
 import type { AuthUser } from './types';
 
+/** Login either completes, or signals that a second factor is still required. */
+export type LoginOutcome =
+  | { user: AuthUser }
+  | { twoFactorRequired: true };
+
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<AuthUser>;
+  login: (email: string, password: string) => Promise<LoginOutcome>;
+  verifyTwoFactor: (code: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   isAdmin: boolean;
@@ -54,8 +60,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const me = await api.post<AuthUser>('/auth/login', { email, password });
+  const login = useCallback(
+    async (email: string, password: string): Promise<LoginOutcome> => {
+      const res = await api.post<AuthUser | { twoFactorRequired: true }>(
+        '/auth/login',
+        { email, password },
+      );
+      if ('twoFactorRequired' in res) {
+        // Credentials were correct; a second factor is still needed.
+        return { twoFactorRequired: true };
+      }
+      setUser(res);
+      return { user: res };
+    },
+    [],
+  );
+
+  const verifyTwoFactor = useCallback(async (code: string) => {
+    const me = await api.post<AuthUser>('/auth/2fa/verify', { code });
     setUser(me);
     return me;
   }, []);
@@ -73,12 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       login,
+      verifyTwoFactor,
       logout,
       refresh,
       isAdmin: user?.role === RoleName.BUREAU_ADMIN,
       isLab: user?.role === RoleName.REGIONAL_LAB_HEAD,
     }),
-    [user, loading, login, logout, refresh],
+    [user, loading, login, verifyTwoFactor, logout, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

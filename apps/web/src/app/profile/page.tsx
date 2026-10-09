@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
 import type { AuthUser } from '@/lib/types';
 import { Avatar, Button, Callout, Card, Field, Spinner } from '@/components/ui';
+import { TwoFactorCard } from '@/components/TwoFactorCard';
 
 const ROLE_LABEL: Record<RoleName, string> = {
   [RoleName.BUREAU_ADMIN]: 'Bureau Administrator',
@@ -40,7 +41,10 @@ export default function ProfilePage() {
           <IdentityCard user={user} refresh={refresh} />
           <NameCard user={user} refresh={refresh} />
         </div>
-        <PasswordCard />
+        <div className="stack" style={{ gap: 18 }}>
+          <PasswordCard />
+          <TwoFactorCard refresh={refresh} />
+        </div>
       </div>
     </>
   );

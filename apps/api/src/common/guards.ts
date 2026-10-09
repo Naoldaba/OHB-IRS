@@ -56,6 +56,7 @@ export class SessionAuthGuard implements CanActivate {
       laboratoryId: user.laboratoryId,
       avatarUrl: user.avatarUrl,
       mustChangePassword: user.mustChangePassword,
+      twoFactorEnabled: user.twoFactorEnabled,
     };
     request.user = authUser;
 

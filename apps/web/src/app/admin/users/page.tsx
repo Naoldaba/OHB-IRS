@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, ShieldCheck } from 'lucide-react';
 import { RoleName } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
 import type { Laboratory, User } from '@/lib/types';
@@ -95,6 +95,26 @@ function UserRow({ user, onChanged }: { user: User; onChanged: () => Promise<voi
     }
   }
 
+  async function resetTwoFactor() {
+    if (
+      !window.confirm(
+        `Reset two-step verification for ${user.fullName}? They will sign in with their password alone until they re-enroll.`,
+      )
+    ) {
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post(`/users/${user.id}/reset-2fa`);
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Reset failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <tr>
       <td>
@@ -104,13 +124,27 @@ function UserRow({ user, onChanged }: { user: User; onChanged: () => Promise<voi
       <td className="text-sm">{ROLE_LABEL[user.role.name]}</td>
       <td className="text-sm muted">{user.laboratory?.name ?? '—'}</td>
       <td>
-        <Pill tone={user.isActive ? 'green' : 'slate'}>{user.isActive ? 'Active' : 'Disabled'}</Pill>
+        <div className="toolbar" style={{ gap: 6 }}>
+          <Pill tone={user.isActive ? 'green' : 'slate'}>{user.isActive ? 'Active' : 'Disabled'}</Pill>
+          {user.twoFactorEnabled && (
+            <span className="pill pill--slate" title="Two-step verification enabled">
+              <ShieldCheck size={12} /> 2FA
+            </span>
+          )}
+        </div>
         {error && <div className="field__error">{error}</div>}
       </td>
       <td style={{ textAlign: 'right' }}>
-        <Button variant="ghost" size="sm" onClick={toggleActive} disabled={busy}>
-          {user.isActive ? 'Disable' : 'Enable'}
-        </Button>
+        <div className="toolbar" style={{ justifyContent: 'flex-end', gap: 4 }}>
+          {user.twoFactorEnabled && (
+            <Button variant="ghost" size="sm" onClick={resetTwoFactor} disabled={busy}>
+              Reset 2FA
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={toggleActive} disabled={busy}>
+            {user.isActive ? 'Disable' : 'Enable'}
+          </Button>
+        </div>
       </td>
     </tr>
   );

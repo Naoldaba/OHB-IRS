@@ -30,6 +30,22 @@ export interface AuthUser {
   avatarUrl: string | null;
   /** When true, the user must change their password before anything else. */
   mustChangePassword: boolean;
+  /** When true, the account has TOTP two-step verification enabled. */
+  twoFactorEnabled: boolean;
+}
+
+/** Current 2FA state for the signed-in user (`GET /auth/2fa/status`). */
+export interface TwoFactorStatus {
+  enabled: boolean;
+  pendingSetup: boolean;
+  recoveryCodesRemaining: number;
+}
+
+/** Enrollment material returned by `POST /auth/2fa/setup`. */
+export interface TwoFactorSetup {
+  secret: string;
+  otpauthUrl: string;
+  qrDataUrl: string;
 }
 
 export interface Laboratory {
@@ -50,6 +66,8 @@ export interface User {
   fullName: string;
   avatarUrl?: string | null;
   isActive: boolean;
+  /** Whether the user has TOTP two-step verification enabled. */
+  twoFactorEnabled?: boolean;
   lastLoginAt?: string | null;
   createdAt: string;
   updatedAt: string;

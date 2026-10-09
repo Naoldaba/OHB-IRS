@@ -42,3 +42,23 @@ export class ResetPasswordDto {
   @MaxLength(100)
   newPassword: string;
 }
+
+/** A second-factor code: a 6-digit TOTP or a recovery code. */
+export class TwoFactorCodeDto {
+  @IsString()
+  @MinLength(6)
+  @MaxLength(32)
+  code: string;
+}
+
+/** Disabling 2FA requires the account password plus a current code. */
+export class DisableTwoFactorDto {
+  @IsString()
+  @MinLength(1)
+  password: string;
+
+  @IsString()
+  @MinLength(6)
+  @MaxLength(32)
+  code: string;
+}

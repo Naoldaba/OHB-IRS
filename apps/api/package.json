@@ -31,7 +31,9 @@
     "exceljs": "^4.4.0",
     "express-session": "^1.18.0",
     "nodemailer": "^6.9.15",
+    "otplib": "^12.0.1",
     "pdfkit": "^0.15.0",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
@@ -46,6 +48,7 @@
     "@types/node": "^22.7.4",
     "@types/nodemailer": "^6.4.16",
     "@types/pdfkit": "^0.13.4",
+    "@types/qrcode": "^1.5.5",
     "prisma": "^5.20.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
