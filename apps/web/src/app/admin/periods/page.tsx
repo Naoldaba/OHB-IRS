@@ -24,6 +24,15 @@ const QUARTER_MONTHS: Record<number, number[]> = {
   4: [10, 11, 12, 13],
 };
 
+/** Report names can repeat across categories, so qualify labels with the
+ *  category when it's known. */
+function typeName(t: ReportType) {
+  return t.category?.name ? `${t.category.name} · ${t.name}` : t.name;
+}
+function typeLabel(t: ReportType) {
+  return `${typeName(t)} (${t.defaultFrequency.toLowerCase()})`;
+}
+
 type CycleStatus = 'open' | 'upcoming' | 'closed';
 
 /** A reporting cycle's lifecycle derived purely from its real dates (EAT). */
@@ -171,7 +180,7 @@ export default function PeriodsPage() {
                 >
                   {types.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.name} ({t.defaultFrequency.toLowerCase()})
+                      {typeLabel(t)}
                     </option>
                   ))}
                 </select>
@@ -247,7 +256,7 @@ function ActiveCycleBanner({
       </div>
       <div className="periods-banner__body">
         <div className="periods-banner__eyebrow">
-          Active reporting cycle{type ? ` · ${type.name}` : ''}
+          Active reporting cycle{type ? ` · ${typeName(type)}` : ''}
         </div>
         <div className="periods-banner__title">
           {cycle.label} <span>· {cycle.year} E.C.</span>
@@ -410,7 +419,7 @@ function GovernanceLedger({
                       <div style={{ fontWeight: 600 }}>{p.label}</div>
                       <div className="text-sm muted">{p.year} E.C.</div>
                     </td>
-                    <td className="text-sm">{type?.name ?? '—'}</td>
+                    <td className="text-sm">{type ? typeName(type) : '—'}</td>
                     <td className="text-sm muted">
                       {fmtEc(p.startDate)} – {fmtEc(p.endDate)}
                       <br />
@@ -479,7 +488,7 @@ function NewPeriodCard({
   return (
     <Card className="orchestrator" title="Period Orchestrator">
       <div className="card__desc" style={{ marginTop: -8 }}>
-        Initialize a new submission window for <strong>{reportType.name}</strong>.
+        Initialize a new submission window for <strong>{typeName(reportType)}</strong>.
       </div>
       <form onSubmit={submit}>
         {error && (
