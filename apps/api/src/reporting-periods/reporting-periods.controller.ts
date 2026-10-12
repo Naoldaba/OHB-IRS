@@ -1,11 +1,12 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { RequireCapability } from '../common/decorators';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { CurrentUser, RequireCapability } from '../common/decorators';
+import { AuthUser } from '../common/auth-user';
 import { ReportingPeriodsService } from './reporting-periods.service';
-import { CreateReportingPeriodDto } from './dto';
+import { CreateReportingPeriodDto, UpdateReportingPeriodDto } from './dto';
 
 /**
  * Reporting periods. Listing/reading is open to any authenticated user (labs
- * pick a period to report against); creation is BUREAU_ADMIN-only.
+ * pick a period to report against); create/update/delete are BUREAU_ADMIN-only.
  */
 @Controller('reporting-periods')
 export class ReportingPeriodsController {
@@ -23,7 +24,23 @@ export class ReportingPeriodsController {
 
   @Post()
   @RequireCapability('manage_periods')
-  create(@Body() dto: CreateReportingPeriodDto) {
-    return this.periods.create(dto);
+  create(@Body() dto: CreateReportingPeriodDto, @CurrentUser() user: AuthUser) {
+    return this.periods.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  @RequireCapability('manage_periods')
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateReportingPeriodDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.periods.update(id, dto, user.id);
+  }
+
+  @Delete(':id')
+  @RequireCapability('manage_periods')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.periods.remove(id, user.id);
   }
 }

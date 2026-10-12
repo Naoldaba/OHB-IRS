@@ -1,7 +1,16 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, ChevronLeft, ChevronRight, CalendarClock, CalendarDays } from 'lucide-react';
+import {
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  CalendarClock,
+  CalendarDays,
+  Pencil,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   PeriodType,
   ETHIOPIAN_MONTHS,
@@ -221,6 +230,7 @@ export default function PeriodsPage() {
             periods={periods}
             type={selectedType}
             now={now}
+            onChanged={() => loadPeriods(selectedTypeId)}
           />
         </>
       )}
@@ -381,11 +391,17 @@ function GovernanceLedger({
   periods,
   type,
   now,
+  onChanged,
 }: {
   periods: ReportingPeriod[];
   type?: ReportType;
   now: Date;
+  onChanged: () => Promise<void>;
 }) {
+  const [editing, setEditing] = useState<ReportingPeriod | null>(null);
+  const [deleting, setDeleting] = useState<ReportingPeriod | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const rows = useMemo(
     () =>
       [...periods].sort(
@@ -396,6 +412,11 @@ function GovernanceLedger({
 
   return (
     <Card className="periods-ledger" title="Governance Ledger — Master Reporting Windows">
+      {error && (
+        <div style={{ marginBottom: 12 }}>
+          <Callout tone="danger">{error}</Callout>
+        </div>
+      )}
       {rows.length === 0 ? (
         <div className="table__empty">No periods yet for this program.</div>
       ) : (
@@ -408,6 +429,7 @@ function GovernanceLedger({
                 <th>Submission window</th>
                 <th>Due</th>
                 <th>Status</th>
+                <th aria-label="Actions" />
               </tr>
             </thead>
             <tbody>
@@ -431,6 +453,32 @@ function GovernanceLedger({
                     <td>
                       <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>
                     </td>
+                    <td>
+                      <div className="toolbar" style={{ gap: 6, justifyContent: 'flex-end' }}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Edit label or due date"
+                          onClick={() => {
+                            setError(null);
+                            setEditing(p);
+                          }}
+                        >
+                          <Pencil size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          title="Delete this period"
+                          onClick={() => {
+                            setError(null);
+                            setDeleting(p);
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+                    </td>
                   </tr>
                 );
               })}
@@ -438,7 +486,183 @@ function GovernanceLedger({
           </table>
         </div>
       )}
+      {editing && (
+        <EditPeriodModal
+          period={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            await onChanged();
+          }}
+        />
+      )}
+      {deleting && (
+        <DeletePeriodModal
+          period={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={async () => {
+            setDeleting(null);
+            await onChanged();
+          }}
+          onError={(msg) => {
+            setDeleting(null);
+            setError(msg);
+          }}
+        />
+      )}
     </Card>
+  );
+}
+
+function DeletePeriodModal({
+  period,
+  onClose,
+  onDeleted,
+  onError,
+}: {
+  period: ReportingPeriod;
+  onClose: () => void;
+  onDeleted: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirm() {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.del(`/reporting-periods/${period.id}`);
+      await onDeleted();
+    } catch (err) {
+      // A 409 (submissions exist) is shown in-dialog; other errors bubble up.
+      const msg = err instanceof ApiError ? err.message : 'Failed to delete period';
+      if (err instanceof ApiError && err.status === 409) {
+        setError(msg);
+        setBusy(false);
+      } else {
+        onError(msg);
+      }
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
+      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: 420 }}>
+        <div className="modal__head">
+          <span className="modal__title">Delete reporting period</span>
+          <button type="button" className="modal__close" aria-label="Close" onClick={onClose} disabled={busy}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="modal__body">
+          <p style={{ margin: 0 }}>
+            Delete the reporting period <strong>{period.label}</strong> ({period.year} E.C.)? This
+            cannot be undone.
+          </p>
+          <p className="text-sm muted" style={{ margin: 0 }}>
+            A period that already has submissions recorded against it can&apos;t be deleted.
+          </p>
+          {error && <Callout tone="danger">{error}</Callout>}
+          <div className="toolbar" style={{ marginTop: 8, justifyContent: 'flex-end', gap: 8 }}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" onClick={confirm} disabled={busy}>
+              {busy ? 'Deleting…' : 'Delete period'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditPeriodModal({
+  period,
+  onClose,
+  onSaved,
+}: {
+  period: ReportingPeriod;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [label, setLabel] = useState(period.label);
+  const [dueDate, setDueDate] = useState(new Date(period.dueDate).toISOString().slice(0, 10));
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await api.patch(`/reporting-periods/${period.id}`, {
+        label: label.trim(),
+        dueDate: new Date(`${dueDate}T00:00:00.000Z`).toISOString(),
+      });
+      await onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to update period');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="modal" role="dialog" aria-modal="true" style={{ maxWidth: 440 }}>
+        <div className="modal__head">
+          <span className="modal__title">Edit reporting period</span>
+          <button type="button" className="modal__close" aria-label="Close" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <form onSubmit={submit} className="modal__body">
+          <div className="card__desc" style={{ marginTop: 0 }}>
+            {period.label} · {period.year} E.C. The calendar window is fixed; you can adjust the
+            label and the submission due date.
+          </div>
+          {error && <Callout tone="danger">{error}</Callout>}
+          <Field label="Label">
+            <input
+              className="input"
+              value={label}
+              maxLength={80}
+              onChange={(e) => setLabel(e.target.value)}
+              required
+            />
+          </Field>
+          <Field label="Due date" hint="The deadline shown to laboratories (G.C.)">
+            <input
+              className="input"
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              required
+            />
+          </Field>
+          <div className="toolbar" style={{ marginTop: 8, justifyContent: 'flex-end', gap: 8 }}>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={busy}>
+              Save changes
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

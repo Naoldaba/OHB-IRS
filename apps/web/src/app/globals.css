@@ -1016,14 +1016,16 @@ h4 {
   gap: 18px;
 }
 .grid--2 {
-  grid-template-columns: repeat(2, 1fr);
+  /* minmax(0, 1fr) — not 1fr — so a wide child (e.g. a report table) can shrink
+     the column and scroll inside itself instead of widening the whole page. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .grid--3 {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .split {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  grid-template-columns: 340px minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }
@@ -1474,6 +1476,7 @@ h4 {
 /* ---- Matrix / report renderer ---- */
 .matrix-wrap {
   overflow-x: auto;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
 }
@@ -1508,6 +1511,15 @@ h4 {
 .matrix td.cell--disabled {
   background: var(--surface-muted);
   color: var(--text-faint);
+}
+/* Table-layout dimension columns: left-aligned row headers that scroll away with
+   the rest of the table (not pinned), so the left columns hide as you scroll right. */
+.matrix th.matrix__dim,
+.matrix td.matrix__dim {
+  text-align: left;
+  background: var(--surface-muted);
+  font-weight: 600;
+  white-space: nowrap;
 }
 .matrix input.cell-input {
   width: 72px;

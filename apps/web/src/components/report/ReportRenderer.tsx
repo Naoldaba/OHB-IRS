@@ -224,7 +224,7 @@ function TableRenderer({
         <thead>
           <tr>
             {model.dimensions.map((d) => (
-              <th key={d.key} className="matrix__rowhead" rowSpan={2}>
+              <th key={d.key} className="matrix__dim" rowSpan={2}>
                 {d.label}
                 {d.required && <span style={{ color: 'var(--status-red)' }}> *</span>}
               </th>
@@ -248,7 +248,7 @@ function TableRenderer({
               {model.dimensions.map((dim) => {
                 const errKey = `rows[${i}].dimensions.${dim.key}`;
                 return (
-                  <td key={dim.key} className="matrix__rowhead" style={{ textAlign: 'left' }}>
+                  <td key={dim.key} className="matrix__dim">
                     <TableDimControl
                       dim={dim}
                       value={row.dimensions?.[dim.key] ?? null}

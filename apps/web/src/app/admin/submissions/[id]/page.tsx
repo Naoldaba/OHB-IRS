@@ -130,7 +130,7 @@ export default function AdminSubmissionDetail() {
         </div>
       )}
 
-      <div className="split" style={{ gridTemplateColumns: '1fr 360px' }}>
+      <div className="split" style={{ gridTemplateColumns: 'minmax(0, 1fr) 360px' }}>
         <div className="stack" style={{ gap: 20 }}>
           <Card
             title="Report data"

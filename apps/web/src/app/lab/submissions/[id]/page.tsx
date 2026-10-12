@@ -275,7 +275,7 @@ export default function LabSubmissionPage() {
         </div>
       )}
 
-      <div className="split" style={{ gridTemplateColumns: '1fr 340px' }}>
+      <div className="split" style={{ gridTemplateColumns: 'minmax(0, 1fr) 340px' }}>
         <Card
           title={editable ? 'Fill in the report' : 'Report data'}
           desc={editable ? 'Your draft saves automatically as you type.' : undefined}

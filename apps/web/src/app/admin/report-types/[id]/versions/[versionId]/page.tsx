@@ -277,7 +277,7 @@ export default function BuilderPage() {
           />
         )
       ) : (
-        <div className="split" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <div className="split" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)' }}>
           <div>
             {importSummary && (
               <div style={{ marginBottom: 12 }}>

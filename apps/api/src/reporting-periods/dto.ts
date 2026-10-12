@@ -43,3 +43,35 @@ export class CreateReportingPeriodDto {
   @IsISO8601()
   dueDate?: string;
 }
+
+/**
+ * Update a reporting period. `label` and `dueDate` can always be changed; the
+ * calendar identity (`periodType`/`year`/`periodNumber`, which drives the date
+ * ranges) can only change while the period has no submissions.
+ */
+export class UpdateReportingPeriodDto {
+  @IsOptional()
+  @IsEnum(PeriodType)
+  periodType?: PeriodType;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(2200)
+  year?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(13)
+  periodNumber?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  label?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  dueDate?: string;
+}
