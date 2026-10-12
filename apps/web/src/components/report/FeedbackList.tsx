@@ -197,7 +197,12 @@ function FeedbackBody({
   return (
     <div>
       <div className="toolbar" style={{ marginBottom: 6 }}>
-        <strong className="text-sm">{feedback.author?.fullName ?? 'Bureau'}</strong>
+        <strong className="text-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {feedback.author?.isOnline && (
+            <span className="presence-dot is-online" title="Online" aria-label="Online" />
+          )}
+          {feedback.author?.fullName ?? 'Bureau'}
+        </strong>
         {!compact &&
           (feedback.type === FeedbackType.REVISION_REQUEST ? (
             <Pill tone="red">revision request</Pill>

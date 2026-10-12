@@ -10,6 +10,7 @@ import { RoleName } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthUser } from './auth-user';
 import { PermissionsService } from './permissions.service';
+import { HEARTBEAT_THROTTLE_MS } from './presence';
 import {
   IS_PUBLIC_KEY,
   PASSWORD_CHANGE_EXEMPT_KEY,
@@ -65,8 +66,21 @@ export class SessionAuthGuard implements CanActivate {
       mustChangePassword: user.mustChangePassword,
       twoFactorEnabled: user.twoFactorEnabled,
       emailNotifications: user.emailNotifications,
+      showOnlineStatus: user.showOnlineStatus,
     };
     request.user = authUser;
+
+    // Online-presence heartbeat: refresh lastSeenAt on live traffic, throttled
+    // so at most one write happens per user per interval. Fire-and-forget — a
+    // failed heartbeat must never block the request. Recorded regardless of the
+    // user's showOnlineStatus preference, which only gates reads (see presence.ts).
+    const now = Date.now();
+    const lastSeen = user.lastSeenAt?.getTime() ?? 0;
+    if (now - lastSeen >= HEARTBEAT_THROTTLE_MS) {
+      void this.prisma.user
+        .update({ where: { id: user.id }, data: { lastSeenAt: new Date(now) } })
+        .catch(() => undefined);
+    }
 
     // A user who still owes a password change may only reach exempt routes
     // (the change-password endpoint, logout, /auth/me). Everything else is

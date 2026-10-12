@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, Camera, Check, Lock, LogOut, Mail, Trash2 } from 'lucide-react';
+import { Bell, Camera, Check, Lock, LogOut, Mail, Trash2, Wifi } from 'lucide-react';
 import { ROLE_META } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
@@ -33,7 +33,7 @@ export default function ProfilePage() {
     <>
       <div className="page-head">
         <div className="micro-label">Account</div>
-        <h1>Your profile</h1>
+        <h1>My profile</h1>
         <p>Manage your display name, profile picture and sign-in password.</p>
       </div>
 
@@ -46,6 +46,7 @@ export default function ProfilePage() {
         <div className="stack" style={{ gap: 18 }}>
           <PasswordCard />
           <NotificationPreferencesCard user={user} refresh={refresh} />
+          <PresencePreferencesCard user={user} refresh={refresh} />
           <TwoFactorCard refresh={refresh} />
         </div>
       </div>
@@ -313,6 +314,63 @@ function NotificationPreferencesCard({
         <span className="text-sm muted">Send me email for new notifications</span>
         <SegmentedToggle
           value={user.emailNotifications ? 'on' : 'off'}
+          disabled={busy}
+          onChange={(v) => set(v === 'on')}
+          options={[
+            { value: 'on', label: 'On' },
+            { value: 'off', label: 'Off' },
+          ]}
+        />
+      </div>
+      {error && (
+        <div style={{ marginTop: 12 }}>
+          <Callout tone="danger" title="Could not save">
+            {error}
+          </Callout>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Toggle whether the user appears online to others (privacy). */
+function PresencePreferencesCard({
+  user,
+  refresh,
+}: {
+  user: AuthUser;
+  refresh: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function set(showOnlineStatus: boolean) {
+    if (showOnlineStatus === user.showOnlineStatus || busy) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await api.patch('/auth/presence-preferences', { showOnlineStatus });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not save your preference.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card
+      title={
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <Wifi size={16} /> Online status
+        </span>
+      }
+      desc="Show others when you are active in the system. Turn this off to stay hidden — no one will see you as online."
+    >
+      <div className="toolbar" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+        <span className="text-sm muted">Appear online to others</span>
+        <SegmentedToggle
+          value={user.showOnlineStatus ? 'on' : 'off'}
           disabled={busy}
           onChange={(v) => set(v === 'on')}
           options={[

@@ -39,6 +39,8 @@ export interface AuthUser {
   twoFactorEnabled: boolean;
   /** When true, in-app notifications are also delivered to the user by email. */
   emailNotifications: boolean;
+  /** When false, the user never appears online to others (privacy toggle). */
+  showOnlineStatus: boolean;
 }
 
 /** Current 2FA state for the signed-in user (`GET /auth/2fa/status`). */
@@ -190,7 +192,7 @@ export interface Feedback {
   fieldKey?: string | null;
   parentId?: string | null;
   createdAt: string;
-  author?: { id: string; fullName: string };
+  author?: { id: string; fullName: string; isOnline?: boolean };
   /** Replies, present on thread roots returned by the API. */
   replies?: Feedback[];
   /** @mentions captured on this message. */

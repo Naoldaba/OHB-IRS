@@ -29,6 +29,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService, type Recipient } from '../notifications/notifications.service';
 import { AuthUser } from '../common/auth-user';
+import { AUTHOR_PRESENCE_SELECT, toPublicAuthor } from '../common/presence';
 import { coerceFieldSchema, toEvaluableRule } from '../common/report-definition';
 import { STORAGE, StorageProvider } from '../storage/storage.provider';
 import {
@@ -95,17 +96,36 @@ const MENTION_SELECT = {
  * Shared by `getDetail` and `listFeedback` so both return the same shape.
  */
 const FEEDBACK_THREAD_INCLUDE = {
-  author: { select: { id: true, fullName: true } },
+  author: { select: AUTHOR_PRESENCE_SELECT },
   resolvedBy: { select: { id: true, fullName: true } },
   mentions: { select: MENTION_SELECT },
   replies: {
     orderBy: { createdAt: 'asc' },
     include: {
-      author: { select: { id: true, fullName: true } },
+      author: { select: AUTHOR_PRESENCE_SELECT },
       mentions: { select: MENTION_SELECT },
     },
   },
 } satisfies Prisma.FeedbackInclude;
+
+/**
+ * Project the presence-carrying author on each feedback root and its replies to
+ * the public `{ id, fullName, isOnline }` shape, deriving online status once per
+ * response and dropping the raw lastSeenAt/showOnlineStatus. Keeps every other
+ * field intact.
+ */
+function withFeedbackPresence<
+  R extends { author: unknown; replies?: { author: unknown }[] },
+>(roots: R[], now: number = Date.now()) {
+  return roots.map((root) => ({
+    ...root,
+    author: toPublicAuthor(root.author as Parameters<typeof toPublicAuthor>[0], now),
+    replies: root.replies?.map((reply) => ({
+      ...reply,
+      author: toPublicAuthor(reply.author as Parameters<typeof toPublicAuthor>[0], now),
+    })),
+  }));
+}
 
 /**
  * Report submission lifecycle — the single enforcement point for the workflow
@@ -189,6 +209,7 @@ export class SubmissionsService {
     const schema = this.schemaFromVersion(submission.definitionVersion?.fieldSchema);
     return {
       ...submission,
+      feedback: withFeedbackPresence(submission.feedback),
       schema,
       renderModel: schema ? buildRenderModel(schema) : null,
     };
@@ -565,7 +586,7 @@ export class SubmissionsService {
           : undefined,
       },
       include: {
-        author: { select: { id: true, fullName: true } },
+        author: { select: AUTHOR_PRESENCE_SELECT },
         mentions: { select: MENTION_SELECT },
       },
     });
@@ -596,7 +617,7 @@ export class SubmissionsService {
     await this.notifications.notifyFeedback(notice, user);
     // Separately ping each @mentioned user (deep-linked to their own portal).
     await this.notifications.notifyMention(notice, user, mentionTargets);
-    return feedback;
+    return { ...feedback, author: toPublicAuthor(feedback.author) };
   }
 
   /**
@@ -702,11 +723,12 @@ export class SubmissionsService {
   async listFeedback(id: string, user: AuthUser) {
     const submission = await this.load(id);
     this.assertAccess(submission, user);
-    return this.prisma.feedback.findMany({
+    const roots = await this.prisma.feedback.findMany({
       where: { submissionId: id, parentId: null },
       orderBy: { createdAt: 'asc' },
       include: FEEDBACK_THREAD_INCLUDE,
     });
+    return withFeedbackPresence(roots);
   }
 
   async listVersions(id: string, user: AuthUser) {

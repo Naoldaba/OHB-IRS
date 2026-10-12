@@ -33,6 +33,11 @@ export class UpdateNotificationPreferenceDto {
   emailNotifications: boolean;
 }
 
+export class UpdatePresencePreferenceDto {
+  @IsBoolean()
+  showOnlineStatus: boolean;
+}
+
 export class ForgotPasswordDto {
   @IsEmail()
   email: string;

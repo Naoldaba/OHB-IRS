@@ -84,6 +84,15 @@ model User {
   twoFactorPendingSecret String?
   twoFactorEnabledAt     DateTime?
   lastLoginAt  DateTime?
+  // --- Online presence (heartbeat) ---
+  // lastSeenAt is refreshed (throttled) by the session guard on authenticated
+  // traffic; it is recorded regardless of the privacy preference below. A user
+  // counts as "online" only when seen within the presence window AND they have
+  // not hidden their status. showOnlineStatus is a self-service privacy toggle:
+  // when false the user never appears online to anyone (derivation is
+  // server-authoritative). See common/presence.ts.
+  lastSeenAt        DateTime?
+  showOnlineStatus  Boolean   @default(true)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 

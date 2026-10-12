@@ -264,14 +264,17 @@ export function Avatar({
   name,
   src,
   size = 40,
+  online,
 }: {
   name: string;
   src?: string | null;
   size?: number;
+  /** When defined, renders an online/offline presence dot on the avatar. */
+  online?: boolean;
 }) {
   return (
     <span
-      className="avatar"
+      className={`avatar${online !== undefined ? ' avatar--has-presence' : ''}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }}
       aria-hidden={false}
       role="img"
@@ -282,6 +285,13 @@ export function Avatar({
         <img src={src} alt="" width={size} height={size} />
       ) : (
         <span className="avatar__initials">{initialsOf(name)}</span>
+      )}
+      {online !== undefined && (
+        <span
+          className={`avatar__presence${online ? ' is-online' : ''}`}
+          title={online ? 'Online' : 'Offline'}
+          aria-label={online ? 'Online' : 'Offline'}
+        />
       )}
     </span>
   );

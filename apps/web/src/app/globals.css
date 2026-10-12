@@ -308,6 +308,7 @@ h4 {
 
 /* ---- Avatar ---- */
 .avatar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -326,6 +327,42 @@ h4 {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+/* With a presence dot the badge must sit on the avatar edge, so the clip that
+   rounds the image is moved onto the image itself and the container overflows. */
+.avatar--has-presence {
+  overflow: visible;
+}
+.avatar--has-presence img {
+  border-radius: 50%;
+}
+.avatar__presence {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 28%;
+  height: 28%;
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 50%;
+  background: var(--muted, #94a3b8);
+  box-shadow: 0 0 0 2px var(--surface, #fff);
+}
+.avatar__presence.is-online {
+  background: #22c55e;
+}
+
+/* Inline presence dot used alongside a name (e.g. feedback threads). */
+.presence-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted, #94a3b8);
+}
+.presence-dot.is-online {
+  background: #22c55e;
 }
 
 /* ---- Profile page ---- */

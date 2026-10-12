@@ -20,4 +20,6 @@ export interface AuthUser {
   twoFactorEnabled: boolean;
   /** When true, in-app notifications are also delivered to the user by email. */
   emailNotifications: boolean;
+  /** When false, the user never appears online to anyone (privacy toggle). */
+  showOnlineStatus: boolean;
 }

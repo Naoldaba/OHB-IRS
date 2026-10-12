@@ -155,7 +155,12 @@ export function PageShell({ children }: { children: ReactNode }) {
               className={`user-chip__link${pathname.startsWith('/profile') ? ' active' : ''}`}
               title="Your profile"
             >
-              <Avatar name={user?.fullName ?? ''} src={user?.avatarUrl} size={34} />
+              <Avatar
+                name={user?.fullName ?? ''}
+                src={user?.avatarUrl}
+                size={34}
+                online={user?.showOnlineStatus}
+              />
               <span className="user-chip__text">
                 <span className="user-chip__name">{user?.fullName}</span>
                 <br />

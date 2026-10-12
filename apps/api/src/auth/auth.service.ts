@@ -213,6 +213,7 @@ export class AuthService {
     mustChangePassword: boolean;
     twoFactorEnabled: boolean;
     emailNotifications: boolean;
+    showOnlineStatus: boolean;
   }): Promise<AuthUser> {
     const capabilities = await this.permissions.capabilitiesForRole(user.roleId);
     return {
@@ -227,6 +228,7 @@ export class AuthService {
       mustChangePassword: user.mustChangePassword,
       twoFactorEnabled: user.twoFactorEnabled,
       emailNotifications: user.emailNotifications,
+      showOnlineStatus: user.showOnlineStatus,
     };
   }
 
@@ -249,6 +251,30 @@ export class AuthService {
       entityType: 'User',
       entityId: userId,
       metadata: { self: true, emailNotifications },
+    });
+    return this.toAuthUser(user);
+  }
+
+  /**
+   * Self-service presence preference: toggle whether the user appears online to
+   * others. When false, the user never shows as online regardless of activity
+   * (the derivation is server-authoritative — see common/presence.ts).
+   */
+  async updatePresencePreference(
+    userId: string,
+    showOnlineStatus: boolean,
+  ): Promise<AuthUser> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { showOnlineStatus },
+      include: { role: true },
+    });
+    await this.audit.record({
+      action: AuditAction.USER_UPDATED,
+      actorId: userId,
+      entityType: 'User',
+      entityId: userId,
+      metadata: { self: true, showOnlineStatus },
     });
     return this.toAuthUser(user);
   }

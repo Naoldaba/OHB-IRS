@@ -33,6 +33,7 @@ import {
   ResetPasswordDto,
   TwoFactorCodeDto,
   UpdateNotificationPreferenceDto,
+  UpdatePresencePreferenceDto,
   UpdateProfileDto,
 } from './dto';
 
@@ -163,6 +164,15 @@ export class AuthController {
     @CurrentUser() user: AuthUser,
   ): Promise<AuthUser> {
     return this.auth.updateNotificationPreference(user.id, dto.emailNotifications);
+  }
+
+  /** Self-service: toggle whether the user appears online to others. */
+  @Patch('presence-preferences')
+  updatePresencePreference(
+    @Body() dto: UpdatePresencePreferenceDto,
+    @CurrentUser() user: AuthUser,
+  ): Promise<AuthUser> {
+    return this.auth.updatePresencePreference(user.id, dto.showOnlineStatus);
   }
 
   /** Self-service: upload/replace the signed-in user's profile picture. */
