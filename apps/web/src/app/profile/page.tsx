@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Bell, Camera, Check, Lock, Mail, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Bell, Camera, Check, Lock, LogOut, Mail, Trash2 } from 'lucide-react';
 import { ROLE_META } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { api, ApiError } from '@/lib/api';
@@ -40,6 +41,7 @@ export default function ProfilePage() {
         <div className="stack" style={{ gap: 18 }}>
           <IdentityCard user={user} refresh={refresh} />
           <NameCard user={user} refresh={refresh} />
+          <SignOutCard />
         </div>
         <div className="stack" style={{ gap: 18 }}>
           <PasswordCard />
@@ -48,6 +50,38 @@ export default function ProfilePage() {
         </div>
       </div>
     </>
+  );
+}
+
+/** Sign out of the current session. */
+function SignOutCard() {
+  const { logout } = useAuth();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  async function handleLogout() {
+    setBusy(true);
+    try {
+      await logout();
+      router.replace('/login');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="toolbar" style={{ justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h2 className="card__title" style={{ marginBottom: 2 }}>Sign out</h2>
+          <p className="muted text-sm" style={{ margin: 0 }}>End your session on this device.</p>
+        </div>
+        <Button variant="secondary" onClick={handleLogout} disabled={busy}>
+          <LogOut size={15} />
+          {busy ? 'Signing out…' : 'Log out'}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

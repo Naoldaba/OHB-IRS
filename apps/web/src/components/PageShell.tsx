@@ -8,8 +8,8 @@
  */
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { ShieldCheck } from 'lucide-react';
 import { ROLE_META } from '@ohb/shared';
 import { useAuth } from '@/lib/auth';
 import { GlobalSearch } from './GlobalSearch';
@@ -46,9 +46,8 @@ const ADMIN_NAV: NavItem[] = [
 const LAB_NAV: NavItem[] = [{ href: '/lab', label: 'My reports' }];
 
 export function PageShell({ children }: { children: ReactNode }) {
-  const { user, logout, isAdmin, can } = useAuth();
+  const { user, isAdmin, can } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
 
   const visible = (item: NavLink) => !item.cap || can(item.cap);
   const nav: NavItem[] = (isAdmin ? ADMIN_NAV : LAB_NAV)
@@ -61,11 +60,6 @@ export function PageShell({ children }: { children: ReactNode }) {
     href === '/admin' || href === '/lab'
       ? pathname === href
       : pathname.startsWith(href);
-
-  async function handleLogout() {
-    await logout();
-    router.replace('/login');
-  }
 
   return (
     <div className="app-shell">
@@ -133,13 +127,6 @@ export function PageShell({ children }: { children: ReactNode }) {
                 </span>
               </span>
             </Link>
-            <button
-              className="btn btn--ghost btn--sm"
-              onClick={handleLogout}
-              title="Sign out"
-            >
-              <LogOut size={15} />
-            </button>
           </div>
         </div>
       </header>
