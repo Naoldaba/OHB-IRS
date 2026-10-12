@@ -2686,6 +2686,128 @@ button.auth-link {
   }
 }
 
+/* ---- Bureau overview (admin landing) redesign ----------------------------- */
+/* Hero action buttons sit on the right of .page-head__row; the Quick Actions
+   dropdown reuses the shared .export-menu panel styles. */
+.ov-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Richer KPI stat cards (report types / awaiting / approved). */
+.ov-stat {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 22px;
+}
+.ov-stat__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.ov-stat__value {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 14px;
+}
+.ov-stat__num {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.ov-stat__unit {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.ov-stat__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+.ov-stat__foot-label {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+.ov-stat__foot-val {
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Section divider heading above the module grid. */
+.ov-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 26px 0 14px;
+}
+.ov-section-hint {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* Module/action cards: whole card is a link; footer pins to the bottom. */
+.action-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.action-card:hover {
+  border-color: var(--primary-accent);
+  box-shadow: var(--shadow-pop);
+}
+.action-card:hover .action-card__arrow {
+  color: var(--primary-accent);
+  transform: translateX(2px);
+}
+.action-card__arrow {
+  color: var(--text-faint);
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.action-card__titlerow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.action-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.action-card__foot-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.action-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-accent);
+  white-space: nowrap;
+}
+
 /* ---- Reporting requirements (redesign) ------------------------------------ */
 .req-selectcard .select {
   font-weight: 600;
