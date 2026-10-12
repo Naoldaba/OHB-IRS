@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Save, Send } from 'lucide-react';
-import { ReportStatus, canEditData } from '@ohb/shared';
+import { ReportStatus, acceptForFileTypes, canEditData, fileTypeLabels } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
 import type { Feedback, MentionableUser, SaveDraftResponse, SubmissionDetail } from '@/lib/types';
 import { Button, Callout, Card, Spinner, StatusPill } from '@/components/ui';
@@ -171,7 +171,11 @@ export default function LabSubmissionPage() {
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         setErrors(toErrorMap(err.fieldErrors));
-        setActionError('Report is incomplete or invalid. Fix the highlighted cells and try again.');
+        setActionError(
+          err.fieldErrors.length > 0
+            ? 'Report is incomplete or invalid. Fix the highlighted cells and try again.'
+            : err.message,
+        );
       } else {
         setActionError(err instanceof ApiError ? err.message : 'Failed to submit');
       }
@@ -326,6 +330,17 @@ export default function LabSubmissionPage() {
             submissionId={id}
             canManage={editable}
             sections={sectionOptions(detail.renderModel)}
+            accept={
+              detail.renderModel?.layout === 'document'
+                ? acceptForFileTypes(detail.renderModel.allowedFileTypes)
+                : undefined
+            }
+            hint={
+              detail.renderModel?.layout === 'document' &&
+              fileTypeLabels(detail.renderModel.allowedFileTypes).length > 0
+                ? `Accepted: ${fileTypeLabels(detail.renderModel.allowedFileTypes).join(', ')}.`
+                : undefined
+            }
           />
         </Card>
       </div>

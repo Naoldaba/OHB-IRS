@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Save, UploadCloud, Grid3x3, ListTree, FileSpreadsheet } from 'lucide-react';
+import { ArrowLeft, Save, UploadCloud, Grid3x3, ListTree, FileSpreadsheet, Paperclip } from 'lucide-react';
 import {
   ReportDefinitionStatus,
   buildRenderModel,
   validateFieldSchema,
+  type DocumentFieldSchema,
   type FieldSchema,
   type ImportSummary,
   type MatrixFieldSchema,
@@ -29,19 +30,21 @@ import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { MatrixBuilder } from '@/components/builder/MatrixBuilder';
 import { SimpleBuilder } from '@/components/builder/SimpleBuilder';
 import { TableBuilder } from '@/components/builder/TableBuilder';
+import { DocumentBuilder } from '@/components/builder/DocumentBuilder';
 import { RuleBuilder } from '@/components/builder/RuleBuilder';
 import {
+  emptyDocumentSchema,
   emptyMatrixSchema,
   emptySimpleSchema,
   emptyTableSchema,
-  hivViralLoadTemplate,
 } from '@/components/builder/schema-helpers';
 
-type BuilderLayout = 'simple' | 'matrix' | 'table';
+type BuilderLayout = 'simple' | 'matrix' | 'table' | 'document';
 
 function emptySchemaFor(layout: BuilderLayout): FieldSchema {
   if (layout === 'matrix') return emptyMatrixSchema();
   if (layout === 'table') return emptyTableSchema();
+  if (layout === 'document') return emptyDocumentSchema();
   return emptySimpleSchema();
 }
 
@@ -67,7 +70,10 @@ export default function BuilderPage() {
     );
     setVersion(v);
     const fs = v.fieldSchema as Partial<FieldSchema>;
-    setSchema(fs && (fs.layout === 'simple' || fs.layout === 'matrix') ? (fs as FieldSchema) : null);
+    const layout = fs?.layout;
+    const known =
+      layout === 'simple' || layout === 'matrix' || layout === 'table' || layout === 'document';
+    setSchema(known ? (fs as FieldSchema) : null);
   }, [id, versionId]);
 
   useEffect(() => {
@@ -100,7 +106,7 @@ export default function BuilderPage() {
    * best-effort: it drops the result into the normal builder (as an unsaved
    * draft) with a summary of what to review — it never publishes on its own.
    */
-  async function onImport(file: File, assist: boolean) {
+  async function onImport(file: File, assist: boolean, layout?: BuilderLayout) {
     // Importing over an existing structure is destructive — confirm first. (A
     // fresh draft has no schema yet, so this only prompts on a started draft.)
     if (schemaHasContent(schema)) {
@@ -115,7 +121,11 @@ export default function BuilderPage() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const path = assist ? '/report-import/parse?assist=ai' : '/report-import/parse';
+      const params = new URLSearchParams();
+      if (assist) params.set('assist', 'ai');
+      if (layout) params.set('layout', layout);
+      const qs = params.toString();
+      const path = `/report-import/parse${qs ? `?${qs}` : ''}`;
       const result = await api.upload<ReportImportResult>(path, form);
       setSchema(result.schema);
       setImportSummary(result.summary);
@@ -250,7 +260,6 @@ export default function BuilderPage() {
           disabled={readOnly}
           busy={busy}
           onChoose={(layout) => update(emptySchemaFor(layout))}
-          onHivTemplate={() => update(hivViralLoadTemplate())}
           onImport={onImport}
           aiAvailable={aiAvailable}
           useAi={useAi}
@@ -291,10 +300,12 @@ export default function BuilderPage() {
                   ? 'Matrix grid'
                   : schema.layout === 'table'
                     ? 'Data table'
-                    : 'Simple sections'}
+                    : schema.layout === 'document'
+                      ? 'Attachment only'
+                      : 'Simple sections'}
               </span>
               {dirty && <span className="pill pill--amber">unsaved changes</span>}
-              {!readOnly && (
+              {!readOnly && schema.layout !== 'document' && (
                 <>
                   <input
                     ref={reimportInput}
@@ -303,7 +314,7 @@ export default function BuilderPage() {
                     style={{ display: 'none' }}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) onImport(file, useAi);
+                      if (file) onImport(file, useAi, schema.layout);
                       e.target.value = '';
                     }}
                   />
@@ -349,6 +360,12 @@ export default function BuilderPage() {
                 readOnly={readOnly}
                 onChange={(s) => update(s)}
               />
+            ) : schema.layout === 'document' ? (
+              <DocumentBuilder
+                schema={schema as DocumentFieldSchema}
+                readOnly={readOnly}
+                onChange={(s) => update(s)}
+              />
             ) : (
               <SimpleBuilder
                 schema={schema as SimpleFieldSchema}
@@ -383,7 +400,6 @@ function LayoutChooser({
   disabled,
   busy,
   onChoose,
-  onHivTemplate,
   onImport,
   aiAvailable,
   useAi,
@@ -392,13 +408,13 @@ function LayoutChooser({
   disabled: boolean;
   busy: boolean;
   onChoose: (layout: BuilderLayout) => void;
-  onHivTemplate: () => void;
-  onImport: (file: File, assist: boolean) => void;
+  onImport: (file: File, assist: boolean, layout?: BuilderLayout) => void;
   aiAvailable: boolean;
   useAi: boolean;
   onToggleAi: (v: boolean) => void;
 }) {
   const [layout, setLayout] = useState<BuilderLayout>('matrix');
+  const [importLayout, setImportLayout] = useState<'auto' | BuilderLayout>('auto');
   const fileInput = useRef<HTMLInputElement>(null);
   return (
     <Card title="Choose a layout" desc="Pick the structure that matches the source report, or import it from an Excel file.">
@@ -407,6 +423,7 @@ function LayoutChooser({
           { value: 'matrix', label: 'Matrix grid' },
           { value: 'table', label: 'Data table' },
           { value: 'simple', label: 'Simple sections' },
+          { value: 'document', label: 'Attachment only' },
         ]}
         value={layout}
         onChange={setLayout}
@@ -443,14 +460,28 @@ function LayoutChooser({
             </div>
           </div>
         </div>
+        <div className="callout">
+          <Paperclip className="callout__icon" size={18} />
+          <div>
+            <div className="callout__title">Attachment only</div>
+            <div className="callout__body">
+              <strong>No form</strong> — the lab just uploads file(s) (e.g. a signed PDF or an
+              Excel workbook). You set the instructions, how many files are required, and the
+              accepted types.
+            </div>
+          </div>
+        </div>
       </div>
       <div className="toolbar" style={{ marginTop: 18 }}>
         <Button onClick={() => onChoose(layout)} disabled={disabled || busy}>
           Start with{' '}
-          {layout === 'matrix' ? 'a matrix' : layout === 'table' ? 'a data table' : 'simple sections'}
-        </Button>
-        <Button variant="secondary" onClick={onHivTemplate} disabled={disabled || busy}>
-          Prefill HIV Viral Load template
+          {layout === 'matrix'
+            ? 'a matrix'
+            : layout === 'table'
+              ? 'a data table'
+              : layout === 'document'
+                ? 'an attachment-only report'
+                : 'simple sections'}
         </Button>
       </div>
 
@@ -468,11 +499,26 @@ function LayoutChooser({
           style={{ display: 'none' }}
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) onImport(file, useAi);
+            if (file) onImport(file, useAi, importLayout === 'auto' ? undefined : importLayout);
             e.target.value = '';
           }}
         />
-        <div className="toolbar" style={{ gap: 12 }}>
+        <div className="toolbar" style={{ gap: 12, flexWrap: 'wrap' }}>
+          <label className="micro-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            Import as
+            <select
+              className="select"
+              style={{ width: 'auto' }}
+              value={importLayout}
+              onChange={(e) => setImportLayout(e.target.value as 'auto' | BuilderLayout)}
+              disabled={disabled || busy}
+            >
+              <option value="auto">Detect automatically</option>
+              <option value="matrix">Matrix grid</option>
+              <option value="table">Data table</option>
+              <option value="simple">Simple sections</option>
+            </select>
+          </label>
           <Button
             variant="secondary"
             onClick={() => fileInput.current?.click()}
@@ -614,6 +660,9 @@ function schemaHasContent(schema: FieldSchema | null): boolean {
     return (
       schema.dimensions.length > 0 || schema.metrics.length > 0 || schema.columnGroups.length > 0
     );
+  }
+  if (schema.layout === 'document') {
+    return Boolean(schema.instructions) || (schema.allowedFileTypes?.length ?? 0) > 0;
   }
   return schema.sections.some((s) => s.fields.length > 0);
 }

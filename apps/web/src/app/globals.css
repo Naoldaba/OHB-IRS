@@ -1521,6 +1521,75 @@ h4 {
   font-weight: 600;
   white-space: nowrap;
 }
+/* Auto totals row at the bottom of a data table. */
+.matrix tr.matrix__total td {
+  font-weight: 700;
+  background: var(--surface-muted);
+  border-top: 2px solid var(--border);
+}
+/* Column header with a fill-down / clear menu button. */
+.colhead {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: space-between;
+  width: 100%;
+}
+.colhead--center {
+  justify-content: center;
+}
+.colmenu {
+  position: relative;
+  display: inline-flex;
+}
+.colmenu__btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.colmenu__btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.colmenu__pop {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-pop);
+  padding: 4px;
+}
+.colmenu__pop button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.colmenu__pop button:hover:not(:disabled) {
+  background: var(--surface-muted);
+}
+.colmenu__pop button:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
 .matrix input.cell-input {
   width: 72px;
   border: 1px solid var(--border);

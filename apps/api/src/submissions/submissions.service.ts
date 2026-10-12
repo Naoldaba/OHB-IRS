@@ -18,12 +18,16 @@ import {
   RoleScope,
   RuleSeverity,
   WorkflowAction,
+  allowedMimeTypes,
   buildRenderModel,
   canEditData,
   emptySubmissionData,
   evaluate,
+  fileTypeLabels,
+  isDocumentSchema,
   transitionFor,
   validateSubmissionData,
+  type DocumentFieldSchema,
 } from '@ohb/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -854,6 +858,17 @@ export class SubmissionsService {
       throw new BadRequestException('Attachment must be 10 MB or smaller');
     }
 
+    // A document report may restrict the accepted file types (admin-configured).
+    const docSchema = await this.documentConstraints(submission.definitionVersionId);
+    if (docSchema?.allowedFileTypes?.length) {
+      const allowed = allowedMimeTypes(docSchema.allowedFileTypes);
+      if (!allowed.has(file.mimetype)) {
+        throw new BadRequestException(
+          `This report only accepts: ${fileTypeLabels(docSchema.allowedFileTypes).join(', ')}.`,
+        );
+      }
+    }
+
     const { key } = await this.storage.saveObject({
       buffer: file.buffer,
       mimeType: file.mimetype,
@@ -946,6 +961,23 @@ export class SubmissionsService {
   private async runLabTransition(id: string, user: AuthUser, action: Extract<WorkflowAction, 'submit' | 'resubmit'>) {
     const submission = await this.loadForLab(id, user);
     const { schema, rules } = await this.requireDefinition(submission.definitionVersionId);
+
+    // Attachment-only (document) reports have no structured data: the only submit
+    // gate is "at least N attachments". Enforced here (file count isn't visible to
+    // the shared validator). No rule evaluation — there are no fields.
+    if (isDocumentSchema(schema)) {
+      const min = schema.minAttachments ?? 1;
+      const count = await this.prisma.attachment.count({ where: { submissionId: submission.id } });
+      if (count < min) {
+        throw new UnprocessableEntityException({
+          message: `This report requires at least ${min} attachment${min === 1 ? '' : 's'} before it can be submitted (currently ${count}).`,
+          errors: [],
+        });
+      }
+      const updatedDoc = await this.transition(submission, action, user, { normalizedData: {}, flags: [] });
+      await this.notifications.notifySubmitted(updatedDoc, user, action === 'resubmit');
+      return updatedDoc;
+    }
 
     // 1) Authoritative structural validation (types + schema-required completeness).
     const result = validateSubmissionData(schema, submission.data, { requireComplete: true });
@@ -1112,6 +1144,19 @@ export class SubmissionsService {
   /** Narrows a jsonb field schema to a usable FieldSchema, or null if unusable. */
   private schemaFromVersion(fieldSchema: Prisma.JsonValue | null | undefined): FieldSchema | null {
     return coerceFieldSchema(fieldSchema);
+  }
+
+  /** The document-layout schema for a submission's version, or null if not a document report. */
+  private async documentConstraints(
+    definitionVersionId: string | null,
+  ): Promise<DocumentFieldSchema | null> {
+    if (!definitionVersionId) return null;
+    const version = await this.prisma.reportDefinitionVersion.findUnique({
+      where: { id: definitionVersionId },
+      select: { fieldSchema: true },
+    });
+    const schema = this.schemaFromVersion(version?.fieldSchema);
+    return schema && isDocumentSchema(schema) ? schema : null;
   }
 }
 

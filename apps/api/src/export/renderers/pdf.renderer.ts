@@ -283,6 +283,25 @@ function drawTable(pdf: Doc, block: TableBlock, left: number, contentW: number):
     pdf.y = y + rowH;
   }
 
+  // Auto totals row.
+  if (block.totals) {
+    if (pdf.y + rowH > bottom(pdf)) {
+      pdf.addPage();
+      drawHeader();
+    }
+    const y = pdf.y;
+    const totalDimW = dimW * block.dimensions.length;
+    cell(pdf, left, y, totalDimW, rowH, 'Total', { fill: GROUP_BG, bold: true, color: '#334155' });
+    let x = left + totalDimW;
+    for (const groupTotals of block.totals) {
+      for (const total of groupTotals) {
+        cell(pdf, x, y, colW, rowH, String(total), { fill: GROUP_BG, bold: true, align: 'center' });
+        x += colW;
+      }
+    }
+    pdf.y = y + rowH;
+  }
+
   if (block.notes && block.notes.length > 0) {
     pdf.moveDown(0.3);
     for (const note of block.notes) {

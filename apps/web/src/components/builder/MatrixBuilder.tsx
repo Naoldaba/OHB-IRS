@@ -7,6 +7,7 @@
  * row's applicable list to keep references intact.
  */
 
+import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type {
   ColumnGroupDef,
@@ -27,6 +28,8 @@ export function MatrixBuilder({
   readOnly: boolean;
   onChange: (schema: MatrixFieldSchema) => void;
 }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
   function patch(part: Partial<MatrixFieldSchema>) {
     onChange({ ...schema, ...part });
   }
@@ -97,6 +100,10 @@ export function MatrixBuilder({
   function removeRow(i: number) {
     patch({ rows: removeAt(schema.rows, i) });
   }
+  function clearRows() {
+    patch({ rows: [] });
+    setConfirmClear(false);
+  }
   function toggleApplicable(rowIndex: number, metricKey: string) {
     const row = schema.rows[rowIndex];
     const has = row.applicableMetrics.includes(metricKey);
@@ -165,9 +172,27 @@ export function MatrixBuilder({
             Rows <span className="muted text-sm">(tests / indicators + applicable metrics)</span>
           </h3>
           {!readOnly && (
-            <Button variant="secondary" size="sm" onClick={addRow}>
-              <Plus size={14} /> Add row
-            </Button>
+            <div className="toolbar" style={{ gap: 8 }}>
+              <Button variant="secondary" size="sm" onClick={addRow}>
+                <Plus size={14} /> Add row
+              </Button>
+              {schema.rows.length > 0 &&
+                (confirmClear ? (
+                  <>
+                    <span className="text-sm muted">Remove all {schema.rows.length} rows?</span>
+                    <Button variant="danger" size="sm" onClick={clearRows}>
+                      Yes, remove all
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setConfirmClear(false)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmClear(true)}>
+                    <Trash2 size={14} /> Remove all rows
+                  </Button>
+                ))}
+            </div>
           )}
         </div>
         {schema.rows.length === 0 ? (

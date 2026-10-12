@@ -18,7 +18,9 @@ export function coerceFieldSchema(
 ): FieldSchema | null {
   if (!fieldSchema || typeof fieldSchema !== 'object' || Array.isArray(fieldSchema)) return null;
   const layout = (fieldSchema as { layout?: unknown }).layout;
-  if (layout !== 'simple' && layout !== 'matrix') return null;
+  if (layout !== 'simple' && layout !== 'matrix' && layout !== 'table' && layout !== 'document') {
+    return null;
+  }
   return fieldSchema as unknown as FieldSchema;
 }
 

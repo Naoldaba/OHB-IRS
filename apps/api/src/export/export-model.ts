@@ -55,6 +55,8 @@ export interface TableBlock {
     /** cells[groupIndex][metricIndex] — aligned to columnGroups × metrics. */
     cells: string[][];
   }[];
+  /** Column sums (auto totals), [groupIndex][metricIndex]; null when no rows. */
+  totals: number[][] | null;
   notes?: string[];
 }
 
@@ -108,7 +110,17 @@ export function buildExportDocModel(args: BuildExportDocArgs): ExportDocModel {
   const { renderModel, data } = args;
   const blocks: ExportBlock[] = [];
 
-  if (renderModel.layout === 'simple') {
+  if (renderModel.layout === 'document') {
+    const rows: { label: string; value: string }[] = [
+      { label: 'Report type', value: 'Attachment-only (document)' },
+    ];
+    if (renderModel.instructions) rows.push({ label: 'Instructions', value: renderModel.instructions });
+    rows.push({
+      label: 'Attachments',
+      value: 'This report is submitted as file attachment(s); download them from the submission page.',
+    });
+    blocks.push({ kind: 'keyval', heading: 'Document report', rows });
+  } else if (renderModel.layout === 'simple') {
     const values = (data?.values ?? {}) as Record<string, unknown>;
     for (const section of renderModel.sections) {
       blocks.push({
@@ -129,6 +141,17 @@ export function buildExportDocModel(args: BuildExportDocArgs): ExportDocModel {
     const rawRows = Array.isArray((data as { rows?: unknown })?.rows)
       ? ((data as { rows: Record<string, unknown>[] }).rows)
       : [];
+    // Column sums (auto totals) — the same figures shown on screen.
+    const totals = renderModel.columnGroups.map(() => renderModel.metrics.map(() => 0));
+    for (const row of rawRows) {
+      const cells = (row?.cells ?? {}) as Record<string, Record<string, unknown>>;
+      renderModel.columnGroups.forEach((group, gi) =>
+        renderModel.metrics.forEach((metric, mi) => {
+          const v = cells?.[group.key]?.[metric.key];
+          if (typeof v === 'number') totals[gi][mi] += v;
+        }),
+      );
+    }
     blocks.push({
       kind: 'table',
       dimensions: renderModel.dimensions.map((d) => ({ key: d.key, label: d.label })),
@@ -150,6 +173,7 @@ export function buildExportDocModel(args: BuildExportDocArgs): ExportDocModel {
           ),
         };
       }),
+      totals: rawRows.length > 0 ? totals : null,
       notes: renderModel.notes,
     });
   } else {

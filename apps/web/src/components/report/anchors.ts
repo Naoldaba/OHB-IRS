@@ -41,6 +41,11 @@ export function anchorOptions(model: RenderModel | null): AnchorOption[] {
     return out;
   }
 
+  if (model.layout === 'document') {
+    // Attachment-only: nothing to anchor beyond the whole report.
+    return out;
+  }
+
   if (model.layout === 'table') {
     // Rows are open-ended, so anchors are the dimension and metric columns.
     for (const dim of model.dimensions) {

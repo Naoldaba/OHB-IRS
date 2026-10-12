@@ -4,7 +4,7 @@ import { AuditAction, type ReportImportResult } from '@ohb/shared';
 import { AuditService } from '../audit/audit.service';
 import { AI, AiProvider } from '../ai/ai.provider';
 import { extractGrid } from './grid';
-import { boundingRegion, parseGridToReport } from './parse';
+import { boundingRegion, parseGridToReport, type PreferredLayout } from './parse';
 import { applyAiRefinement, buildRefineRequest } from './ai-refine';
 
 /**
@@ -36,6 +36,7 @@ export class ReportImportService {
     file: Express.Multer.File | undefined,
     actorId: string,
     assistWithAi = false,
+    preferredLayout?: PreferredLayout,
   ): Promise<ReportImportResult> {
     if (!file || !file.buffer?.length) {
       throw new BadRequestException('No file was uploaded.');
@@ -66,7 +67,7 @@ export class ReportImportService {
       throw new BadRequestException(`Sheet "${chosen.name}" appears to be empty.`);
     }
 
-    const result = parseGridToReport(grid);
+    const result = parseGridToReport(grid, preferredLayout);
     result.summary.sheetName = chosen.name;
     if (sheets.length > 1) {
       result.summary.skipped.push({

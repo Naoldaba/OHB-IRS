@@ -405,10 +405,17 @@ function hasAdjacentRepeats(row: GridCell[], start: number, end: number): boolea
  * Returns null when the sheet is not clearly a table so the matrix/simple
  * heuristics handle it instead.
  */
-function detectTable(region: Grid): TableParams | null {
+/**
+ * Compute the structural landmarks for a table read of the grid (header band,
+ * leading dimension columns, data-block start). Lenient: it always returns a
+ * best-effort shape (at least one dimension column) so a *forced* table import
+ * can use it even when the auto-detector would decline. Returns null only for a
+ * degenerate grid.
+ */
+function computeTableParams(region: Grid): TableParams | null {
   const rows = region.length;
   const cols = region[0]?.length ?? 0;
-  if (cols < 3 || rows < 3) return null;
+  if (cols < 1 || rows < 2) return null;
 
   // Leading rows that are mostly text are the header band (banner/group/metric).
   let headerRows = 0;
@@ -416,8 +423,9 @@ function detectTable(region: Grid): TableParams | null {
     if (textFraction(region[r]) >= 0.5) headerRows += 1;
     else break;
   }
-  if (headerRows < 1 || headerRows >= rows) return null;
-  headerRows = Math.min(headerRows, 4);
+  headerRows = Math.min(Math.max(headerRows, 1), 4);
+  if (headerRows >= rows) headerRows = rows - 1; // keep at least one body row
+  if (headerRows < 1) headerRows = 1;
   const bodyStart = headerRows;
   const metricRow = headerRows - 1;
   const groupRow = headerRows >= 2 ? headerRows - 2 : -1;
@@ -435,22 +443,37 @@ function detectTable(region: Grid): TableParams | null {
     if (tf >= 0.5 || isSrNo) dimCols.push(c);
     else break;
   }
-  if (dimCols.length === 0) return null;
+  if (dimCols.length === 0) dimCols.push(0); // lenient: at least one dimension column
   const dataStart = dimCols[dimCols.length - 1] + 1;
-  if (dataStart >= cols) return null;
+
+  return { headerRows, dimCols, dataStart, groupRow, metricRow };
+}
+
+/**
+ * Confident auto-detection of a table: a computed shape that also clears the
+ * bars (>=2 text dimension columns + a predominantly numeric data block). Used
+ * only for auto-layout; a forced table import uses {@link computeTableParams}.
+ */
+function detectTable(region: Grid): TableParams | null {
+  const rows = region.length;
+  const cols = region[0]?.length ?? 0;
+  if (cols < 3 || rows < 3) return null;
+
+  const p = computeTableParams(region);
+  if (!p || p.dataStart >= cols) return null;
 
   // A table needs >=2 *text* dimension columns (a single label column is a matrix).
-  const textDims = dimCols.filter((c) => {
-    if (c === 0 && SRNO_HEADER.test(region[metricRow][0]?.text ?? '')) return false;
-    return textFraction(column(region, c).slice(bodyStart)) >= 0.5;
+  const textDims = p.dimCols.filter((c) => {
+    if (c === 0 && SRNO_HEADER.test(region[p.metricRow][0]?.text ?? '')) return false;
+    return textFraction(column(region, c).slice(p.headerRows)) >= 0.5;
   });
   if (textDims.length < 2) return null;
 
   // The data block should be predominantly numeric.
   let num = 0;
   let tot = 0;
-  for (let r = bodyStart; r < rows; r += 1) {
-    for (let c = dataStart; c < cols; c += 1) {
+  for (let r = p.headerRows; r < rows; r += 1) {
+    for (let c = p.dataStart; c < cols; c += 1) {
       const cell = region[r][c];
       if (cell.text !== '') {
         tot += 1;
@@ -460,7 +483,7 @@ function detectTable(region: Grid): TableParams | null {
   }
   if (tot === 0 || num / tot < 0.5) return null;
 
-  return { headerRows, dimCols, dataStart, groupRow, metricRow };
+  return p;
 }
 
 function headerLabelForColumn(region: Grid, c: number, metricRow: number): string {
@@ -545,6 +568,16 @@ function parseTable(region: Grid, p: TableParams): ReportImportResult {
     }
   }
 
+  // A forced table on a sheet with no clear numeric block may yield no metrics;
+  // seed a default so the schema is valid and the admin can edit it.
+  if (metrics.length === 0) {
+    if (columnGroups.length === 0) columnGroups.push({ key: groupKey('Data', 'group_1'), label: 'Data' });
+    metrics.push({ key: metricKey('Total', 'metric_1'), label: 'Total', type: 'integer' });
+    warnings.push({
+      message: 'No metric columns were detected — a default "Total" metric was added. Edit the metrics to match the report.',
+    });
+  }
+
   warnings.push({
     message:
       'Rows are open-ended — the lab adds one row per entry. Review the columns, metric labels and which columns should be required before publishing.',
@@ -574,20 +607,35 @@ function parseTable(region: Grid, p: TableParams): ReportImportResult {
   return { schema, summary };
 }
 
+/** A layout the admin can force for an import, or `auto` to let the parser decide. */
+export type PreferredLayout = 'matrix' | 'table' | 'simple';
+
 /**
  * Parse a normalized grid into a candidate report schema + summary. Assumes the
  * caller has already rejected a wholly-empty sheet; still tolerant of ragged
- * real-world sheets.
+ * real-world sheets. When `preferred` is given, that layout is forced (the admin
+ * chose it); otherwise the layout is auto-detected.
  */
-export function parseGridToReport(grid: Grid): ReportImportResult {
+export function parseGridToReport(grid: Grid, preferred?: PreferredLayout): ReportImportResult {
   const region = boundingRegion(grid);
   if (!region) {
     // Defensive: the service guards emptiness, but keep a valid, obviously-empty
     // simple schema rather than throwing from a pure function.
     return parseSimple([[{ text: '', numeric: null }]]);
   }
-  // Prefer the repeating-row table shape when the sheet clearly is one (several
-  // leading dimension columns); otherwise fall back to matrix/simple.
+
+  if (preferred === 'simple') return parseSimple(region);
+  if (preferred === 'matrix') {
+    const { twoHeaderRows } = detectLayout(region);
+    return parseMatrix(region, twoHeaderRows);
+  }
+  if (preferred === 'table') {
+    const p = computeTableParams(region);
+    return p ? parseTable(region, p) : parseSimple(region);
+  }
+
+  // Auto: prefer the repeating-row table shape when the sheet clearly is one
+  // (several leading dimension columns); otherwise fall back to matrix/simple.
   const tableParams = detectTable(region);
   if (tableParams) return parseTable(region, tableParams);
 

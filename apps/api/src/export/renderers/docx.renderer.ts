@@ -321,6 +321,35 @@ function tableBlock(block: TableBlock): (Paragraph | Table)[] {
     rows.push(new TableRow({ children: cells }));
   }
 
+  // Auto totals row.
+  if (block.totals) {
+    const totalCells: TableCell[] = [
+      new TableCell({
+        columnSpan: Math.max(1, block.dimensions.length),
+        borders: CELL_BORDER,
+        shading: { type: ShadingType.CLEAR, fill: GROUP_BG, color: 'auto' },
+        children: [new Paragraph({ children: [new TextRun({ text: 'Total', bold: true, color: '334155' })] })],
+      }),
+    ];
+    for (const groupTotals of block.totals) {
+      for (const total of groupTotals) {
+        totalCells.push(
+          new TableCell({
+            borders: CELL_BORDER,
+            shading: { type: ShadingType.CLEAR, fill: GROUP_BG, color: 'auto' },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: String(total), bold: true })],
+              }),
+            ],
+          }),
+        );
+      }
+    }
+    rows.push(new TableRow({ children: totalCells }));
+  }
+
   const out: (Paragraph | Table)[] = [
     new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }),
   ];

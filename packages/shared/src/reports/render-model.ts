@@ -10,6 +10,7 @@
 
 import {
   FieldSchema,
+  isDocumentSchema,
   isMatrixSchema,
   isTableSchema,
   SelectOption,
@@ -87,9 +88,29 @@ export interface TableRenderModel {
   notes?: string[];
 }
 
-export type RenderModel = SimpleRenderModel | MatrixRenderModel | TableRenderModel;
+/** `document` render model — attachment-only, no fields. */
+export interface DocumentRenderModel {
+  layout: 'document';
+  instructions?: string;
+  minAttachments: number;
+  allowedFileTypes: string[];
+}
+
+export type RenderModel =
+  | SimpleRenderModel
+  | MatrixRenderModel
+  | TableRenderModel
+  | DocumentRenderModel;
 
 export function buildRenderModel(schema: FieldSchema): RenderModel {
+  if (isDocumentSchema(schema)) {
+    return {
+      layout: 'document',
+      instructions: schema.instructions,
+      minAttachments: schema.minAttachments ?? 1,
+      allowedFileTypes: schema.allowedFileTypes ?? [],
+    };
+  }
   if (isTableSchema(schema)) {
     return {
       layout: 'table',

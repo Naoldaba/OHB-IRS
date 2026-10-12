@@ -18,6 +18,10 @@ interface Props {
   canManage?: boolean;
   /** Sections offered as an optional anchor on upload. */
   sections?: SectionOption[];
+  /** `accept` attribute hint (e.g. document reports that restrict file types). */
+  accept?: string;
+  /** Overrides the default "allowed types" help text. */
+  hint?: string;
 }
 
 /** Human-readable file size. */
@@ -37,7 +41,7 @@ function formatDate(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function AttachmentsPanel({ submissionId, canManage = false, sections = [] }: Props) {
+export function AttachmentsPanel({ submissionId, canManage = false, sections = [], accept, hint }: Props) {
   const [items, setItems] = useState<Attachment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -164,6 +168,7 @@ export function AttachmentsPanel({ submissionId, canManage = false, sections = [
           <input
             ref={fileInput}
             type="file"
+            accept={accept || undefined}
             style={{ display: 'none' }}
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -178,7 +183,7 @@ export function AttachmentsPanel({ submissionId, canManage = false, sections = [
             <Upload size={15} /> {busy ? 'Uploading…' : 'Add attachment'}
           </Button>
           <div className="text-sm muted">
-            PDF, image, Excel, Word, CSV or text. Up to 10 MB.
+            {hint ?? 'PDF, image, Excel, Word, CSV or text.'} Up to 10 MB.
           </div>
         </>
       )}

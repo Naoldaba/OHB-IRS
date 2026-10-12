@@ -45,8 +45,10 @@ export function validateFieldSchema(schema: unknown): SchemaValidationResult {
     validateMatrix(schema as Record<string, unknown>, errors);
   } else if (layout === 'table') {
     validateTable(schema as Record<string, unknown>, errors);
+  } else if (layout === 'document') {
+    validateDocument(schema as Record<string, unknown>, errors);
   } else {
-    errors.push({ path: 'layout', message: "layout must be 'simple', 'matrix', or 'table'" });
+    errors.push({ path: 'layout', message: "layout must be 'simple', 'matrix', 'table', or 'document'" });
   }
 
   return { ok: errors.length === 0, errors };
@@ -208,6 +210,23 @@ function validateTable(schema: Record<string, unknown>, errors: ValidationError[
 
   if (schema.minRows !== undefined && (typeof schema.minRows !== 'number' || schema.minRows < 0)) {
     errors.push({ path: 'minRows', message: 'minRows must be a non-negative number' });
+  }
+}
+
+function validateDocument(schema: Record<string, unknown>, errors: ValidationError[]): void {
+  if (schema.instructions !== undefined && typeof schema.instructions !== 'string') {
+    errors.push({ path: 'instructions', message: 'instructions must be text' });
+  }
+  if (
+    schema.minAttachments !== undefined &&
+    (typeof schema.minAttachments !== 'number' || schema.minAttachments < 0 || !Number.isInteger(schema.minAttachments))
+  ) {
+    errors.push({ path: 'minAttachments', message: 'minAttachments must be a non-negative whole number' });
+  }
+  if (schema.allowedFileTypes !== undefined) {
+    if (!Array.isArray(schema.allowedFileTypes) || schema.allowedFileTypes.some((t) => typeof t !== 'string')) {
+      errors.push({ path: 'allowedFileTypes', message: 'allowedFileTypes must be a list of type keys' });
+    }
   }
 }
 

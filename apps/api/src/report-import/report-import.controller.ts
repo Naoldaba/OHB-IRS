@@ -5,6 +5,7 @@ import { type ReportImportResult } from '@ohb/shared';
 import { CurrentUser, RequireCapability } from '../common/decorators';
 import { AuthUser } from '../common/auth-user';
 import { ReportImportService } from './report-import.service';
+import type { PreferredLayout } from './parse';
 
 /** Max accepted upload for a definition import. */
 const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
@@ -36,7 +37,10 @@ export class ReportImportController {
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthUser,
     @Query('assist') assist?: string,
+    @Query('layout') layout?: string,
   ): Promise<ReportImportResult> {
-    return this.importer.parse(file, user.id, assist === 'ai');
+    const preferred: PreferredLayout | undefined =
+      layout === 'matrix' || layout === 'table' || layout === 'simple' ? layout : undefined;
+    return this.importer.parse(file, user.id, assist === 'ai', preferred);
   }
 }

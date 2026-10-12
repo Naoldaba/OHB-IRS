@@ -8,7 +8,7 @@
  * rules are a separate configurable layer (IMPLEMENTATION_PLAN §6).
  */
 
-import { FieldSchema, isMatrixSchema, isTableSchema, SimpleFieldSchema } from './field-schema';
+import { FieldSchema, isDocumentSchema, isMatrixSchema, isTableSchema, SimpleFieldSchema } from './field-schema';
 import {
   validateMatrixReportData,
   ValidationError,
@@ -45,6 +45,11 @@ export function validateSubmissionData(
       normalized: result.normalized as unknown as Record<string, unknown>,
     };
   }
+  if (isDocumentSchema(schema)) {
+    // Attachment-only: no structured data. The "at least N attachments" rule is
+    // enforced server-side (the file count isn't visible here). Always ok.
+    return { ok: true, errors: [], normalized: {} };
+  }
   return validateSimpleData(schema, data, options);
 }
 
@@ -55,6 +60,9 @@ export function emptySubmissionData(schema: FieldSchema): Record<string, unknown
   }
   if (isTableSchema(schema)) {
     return emptyTableData() as unknown as Record<string, unknown>;
+  }
+  if (isDocumentSchema(schema)) {
+    return {};
   }
   const values: Record<string, unknown> = {};
   for (const section of schema.sections) {

@@ -50,6 +50,9 @@ function buildLookup(model: RenderModel | null): Map<string, { label: string; gr
   // directly in buildTableIssues rather than pre-enumerated here.
   if (model.layout === 'table') return lookup;
 
+  // document reports have no fields.
+  if (model.layout === 'document') return lookup;
+
   // matrix: error path is "<rowKey>.<groupKey>.<metricKey>" (no "rows." prefix).
   const metricLabel = new Map(model.metrics.map((m) => [m.key, m.label]));
   for (const row of model.rows) {

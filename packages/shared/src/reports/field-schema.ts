@@ -90,7 +90,29 @@ export interface TableFieldSchema {
   notes?: string[];
 }
 
-export type FieldSchema = SimpleFieldSchema | MatrixFieldSchema | TableFieldSchema;
+/**
+ * `document` — an attachment-only report. There is **no structured data entry**:
+ * the lab uploads file(s) (e.g. a scanned/signed PDF or an Excel workbook) and
+ * the submission's `data` stays empty. The admin writes optional instructions,
+ * sets how many files are required to submit, and optionally restricts the
+ * accepted file types. The "at least N attachments" rule is enforced
+ * server-side at submit (the shared data validator only ever sees `data`).
+ */
+export interface DocumentFieldSchema {
+  layout: 'document';
+  /** Guidance shown to the lab (what to upload). */
+  instructions?: string;
+  /** Minimum attachments required to submit (default 1). */
+  minAttachments?: number;
+  /** Allowed file-type category keys (see FILE_TYPE_CATEGORIES); empty = any. */
+  allowedFileTypes?: string[];
+}
+
+export type FieldSchema =
+  | SimpleFieldSchema
+  | MatrixFieldSchema
+  | TableFieldSchema
+  | DocumentFieldSchema;
 
 /** Narrowing helpers (also usable after a jsonb round-trip). */
 export function isSimpleSchema(schema: FieldSchema): schema is SimpleFieldSchema {
@@ -103,4 +125,8 @@ export function isMatrixSchema(schema: FieldSchema): schema is MatrixFieldSchema
 
 export function isTableSchema(schema: FieldSchema): schema is TableFieldSchema {
   return schema.layout === 'table';
+}
+
+export function isDocumentSchema(schema: FieldSchema): schema is DocumentFieldSchema {
+  return schema.layout === 'document';
 }

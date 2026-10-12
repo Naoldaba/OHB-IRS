@@ -242,6 +242,30 @@ function renderTable(ws: ExcelJS.Worksheet, block: TableBlock, startRow: number)
     r += 1;
   }
 
+  // Auto totals row.
+  if (block.totals) {
+    const label = ws.getCell(r, 1);
+    label.value = 'Total';
+    label.font = { bold: true, color: { argb: 'FF334155' } };
+    label.fill = GROUP_FILL;
+    label.border = THIN_BORDER;
+    if (dimCount > 1) ws.mergeCells(r, 1, r, dimCount);
+    for (let i = 2; i <= dimCount; i += 1) ws.getCell(r, i).border = THIN_BORDER;
+    let c = firstDataCol;
+    for (const groupTotals of block.totals) {
+      for (const total of groupTotals) {
+        const cc = ws.getCell(r, c);
+        cc.value = total;
+        cc.font = { bold: true };
+        cc.fill = GROUP_FILL;
+        cc.alignment = { horizontal: 'center' };
+        cc.border = THIN_BORDER;
+        c += 1;
+      }
+    }
+    r += 1;
+  }
+
   for (let i = 0; i < dimCount; i += 1) {
     const column = ws.getColumn(1 + i);
     if (!column.width || column.width < 16) column.width = 16;

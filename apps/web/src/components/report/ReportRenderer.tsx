@@ -12,7 +12,9 @@
  *   matrix: "<rowKey>.<groupKey>.<metricKey>"   (note: no "rows." prefix)
  */
 
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
+  DocumentRenderModel,
   MatrixRenderModel,
   RenderModel,
   SimpleRenderModel,
@@ -20,6 +22,7 @@ import type {
   TableRenderModel,
   RenderTableDimension,
 } from '@ohb/shared';
+import { fileTypeLabels } from '@ohb/shared';
 
 type Data = Record<string, unknown>;
 
@@ -39,7 +42,41 @@ export function ReportRenderer(props: ReportRendererProps) {
   if (props.model.layout === 'table') {
     return <TableRenderer {...props} model={props.model} />;
   }
+  if (props.model.layout === 'document') {
+    return <DocumentRenderer model={props.model} />;
+  }
   return <SimpleRenderer {...props} model={props.model} />;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Document (attachment-only)                                                 */
+/* -------------------------------------------------------------------------- */
+
+function DocumentRenderer({ model }: { model: DocumentRenderModel }) {
+  const types = fileTypeLabels(model.allowedFileTypes);
+  return (
+    <div className="callout" style={{ alignItems: 'flex-start' }}>
+      <div>
+        <div className="callout__title">Attachment-only report</div>
+        <div className="callout__body">
+          {model.instructions ? (
+            <p style={{ margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{model.instructions}</p>
+          ) : (
+            <p style={{ margin: '0 0 8px' }}>
+              This report is submitted as file attachment(s) — there is no form to fill.
+            </p>
+          )}
+          <p style={{ margin: 0 }} className="text-sm muted">
+            Upload your file{model.minAttachments === 1 ? '' : 's'} in the Attachments panel.
+            {model.minAttachments > 0
+              ? ` At least ${model.minAttachments} file${model.minAttachments === 1 ? '' : 's'} required to submit.`
+              : ''}
+            {types.length > 0 ? ` Accepted: ${types.join(', ')}.` : ''}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -167,6 +204,11 @@ type TableRow = {
   cells: Record<string, Record<string, number | null>>;
 };
 
+/** A column in visual order: a dimension input, or a group×metric number cell. */
+type ColDesc =
+  | { kind: 'dim'; label: string; dimKey: string; dim: RenderTableDimension }
+  | { kind: 'metric'; label: string; groupKey: string; metricKey: string };
+
 function blankTableRow(model: TableRenderModel): TableRow {
   const dimensions: Record<string, string | number | null> = {};
   for (const d of model.dimensions) dimensions[d.key] = null;
@@ -179,6 +221,18 @@ function blankTableRow(model: TableRenderModel): TableRow {
   return { dimensions, cells };
 }
 
+function cloneRow(r: TableRow): TableRow {
+  return {
+    dimensions: { ...r.dimensions },
+    cells: Object.fromEntries(Object.entries(r.cells ?? {}).map(([k, v]) => [k, { ...v }])),
+  };
+}
+
+/**
+ * The repeating-row data table. Edit mode adds spreadsheet conveniences: paste a
+ * block from Excel (auto-creating rows), keyboard navigation (Enter / ↑ / ↓),
+ * per-column fill-down / clear, and an auto totals row.
+ */
 function TableRenderer({
   model,
   data,
@@ -190,43 +244,174 @@ function TableRenderer({
     ? (data as { rows: TableRow[] }).rows
     : []) as TableRow[];
 
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const focused = useRef<{ r: number; c: number } | null>(null);
+  const [pendingFocus, setPendingFocus] = useState<{ r: number; c: number } | null>(null);
+  const [menuCol, setMenuCol] = useState<number | null>(null);
+
+  // Flat column list in visual order: dimensions first, then group × metric.
+  const columns = useMemo<ColDesc[]>(() => {
+    const out: ColDesc[] = [];
+    model.dimensions.forEach((d) => out.push({ kind: 'dim', label: d.label, dimKey: d.key, dim: d }));
+    model.columnGroups.forEach((g) =>
+      model.metrics.forEach((m) =>
+        out.push({ kind: 'metric', label: m.label, groupKey: g.key, metricKey: m.key }),
+      ),
+    );
+    return out;
+  }, [model]);
+
   const commit = (next: TableRow[]) => onChange?.({ ...data, rows: next });
 
-  function setDim(i: number, key: string, value: string | number | null) {
-    const next = rows.map((r, ri) =>
-      ri === i ? { ...r, dimensions: { ...r.dimensions, [key]: value } } : r,
+  function colValue(row: TableRow, col: ColDesc): string | number | null {
+    return col.kind === 'dim'
+      ? row.dimensions?.[col.dimKey] ?? null
+      : row.cells?.[col.groupKey]?.[col.metricKey] ?? null;
+  }
+
+  /** Apply a batch of (row, column, value) edits, auto-extending the row list. */
+  function applyEdits(edits: { r: number; c: number; value: string | number | null }[]) {
+    if (!onChange || edits.length === 0) return;
+    const maxR = Math.max(rows.length - 1, ...edits.map((e) => e.r));
+    const next: TableRow[] = [];
+    for (let i = 0; i <= maxR; i += 1) next.push(rows[i] ? cloneRow(rows[i]) : blankTableRow(model));
+    for (const e of edits) {
+      const col = columns[e.c];
+      if (!col) continue;
+      if (col.kind === 'dim') next[e.r].dimensions[col.dimKey] = e.value;
+      else {
+        (next[e.r].cells[col.groupKey] ??= {})[col.metricKey] =
+          typeof e.value === 'number' ? e.value : null;
+      }
+    }
+    commit(next);
+  }
+
+  const setOne = (r: number, c: number, value: string | number | null) =>
+    applyEdits([{ r, c, value }]);
+  const addRow = () => commit([...rows, blankTableRow(model)]);
+  const removeRow = (i: number) => commit(rows.filter((_, ri) => ri !== i));
+
+  /* ---- keyboard navigation ---- */
+  function focusCell(r: number, c: number) {
+    const el = wrapRef.current?.querySelector<HTMLElement>(`[data-r="${r}"][data-c="${c}"]`);
+    el?.focus();
+    if (el instanceof HTMLInputElement) el.select();
+  }
+  function moveDown(r: number, c: number) {
+    if (r + 1 < rows.length) focusCell(r + 1, c);
+    else {
+      commit([...rows, blankTableRow(model)]);
+      setPendingFocus({ r: r + 1, c });
+    }
+  }
+  function onCellKeyDown(e: React.KeyboardEvent, r: number, c: number, numericNav: boolean) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      moveDown(r, c);
+    } else if (e.key === 'ArrowDown' && numericNav) {
+      e.preventDefault();
+      moveDown(r, c);
+    } else if (e.key === 'ArrowUp' && numericNav) {
+      if (r > 0) {
+        e.preventDefault();
+        focusCell(r - 1, c);
+      }
+    }
+  }
+  useEffect(() => {
+    if (pendingFocus) {
+      focusCell(pendingFocus.r, pendingFocus.c);
+      setPendingFocus(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows.length, pendingFocus]);
+
+  /* ---- paste from Excel ---- */
+  function onPaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData('text/plain');
+    const anchor = focused.current;
+    if (!text || !anchor) return;
+    const lines = text.replace(/\r/g, '').split('\n');
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    if (lines.length === 0) return;
+    const grid = lines.map((l) => l.split('\t'));
+    const multi = grid.length > 1 || (grid[0]?.length ?? 0) > 1;
+    if (!multi) return; // a single cell pastes normally
+    e.preventDefault();
+    const edits: { r: number; c: number; value: string | number | null }[] = [];
+    grid.forEach((line, dr) =>
+      line.forEach((raw, dc) => {
+        const c = anchor.c + dc;
+        if (c >= columns.length) return;
+        edits.push({ r: anchor.r + dr, c, value: coerceForColumn(columns[c], raw) });
+      }),
     );
-    commit(next);
+    applyEdits(edits);
   }
-  function setCell(i: number, groupKey: string, metricKey: string, raw: string) {
-    const parsed = raw === '' ? null : Number(raw);
-    const value = raw !== '' && Number.isNaN(parsed) ? null : parsed;
-    const next = rows.map((r, ri) => {
-      if (ri !== i) return r;
-      const group = { ...(r.cells[groupKey] ?? {}), [metricKey]: value };
-      return { ...r, cells: { ...r.cells, [groupKey]: group } };
-    });
-    commit(next);
+
+  /* ---- fill down / clear column ---- */
+  function fillDown(c: number) {
+    setMenuCol(null);
+    if (rows.length === 0) return;
+    const value = colValue(rows[0], columns[c]);
+    applyEdits(rows.map((_, r) => ({ r, c, value })));
   }
-  function addRow() {
-    commit([...rows, blankTableRow(model)]);
+  function clearColumn(c: number) {
+    setMenuCol(null);
+    applyEdits(rows.map((_, r) => ({ r, c, value: null })));
   }
-  function removeRow(i: number) {
-    commit(rows.filter((_, ri) => ri !== i));
-  }
+  // Close the column menu on an outside click.
+  useEffect(() => {
+    if (menuCol === null) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.colmenu')) setMenuCol(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [menuCol]);
+
+  /* ---- auto totals ---- */
+  const totals = useMemo(
+    () =>
+      columns.map((col) =>
+        col.kind === 'metric'
+          ? rows.reduce((s, row) => {
+              const v = row.cells?.[col.groupKey]?.[col.metricKey];
+              return s + (typeof v === 'number' ? v : 0);
+            }, 0)
+          : null,
+      ),
+    [columns, rows],
+  );
+  const showTotals = rows.length > 0 && model.metrics.length > 0;
 
   const totalCols =
     model.dimensions.length + model.columnGroups.length * model.metrics.length + (mode === 'edit' ? 1 : 0);
+  const metricColStart = model.dimensions.length;
 
   return (
-    <div className="matrix-wrap">
+    <div className="matrix-wrap" ref={wrapRef} onPaste={mode === 'edit' ? onPaste : undefined}>
       <table className="matrix">
         <thead>
           <tr>
-            {model.dimensions.map((d) => (
+            {model.dimensions.map((d, di) => (
               <th key={d.key} className="matrix__dim" rowSpan={2}>
-                {d.label}
-                {d.required && <span style={{ color: 'var(--status-red)' }}> *</span>}
+                <span className="colhead">
+                  <span>
+                    {d.label}
+                    {d.required && <span style={{ color: 'var(--status-red)' }}> *</span>}
+                  </span>
+                  {mode === 'edit' && (
+                    <ColMenu
+                      open={menuCol === di}
+                      disabled={rows.length === 0}
+                      onToggle={() => setMenuCol(menuCol === di ? null : di)}
+                      onFillDown={() => fillDown(di)}
+                      onClear={() => clearColumn(di)}
+                    />
+                  )}
+                </span>
               </th>
             ))}
             {model.columnGroups.map((g) => (
@@ -237,15 +422,33 @@ function TableRenderer({
             {mode === 'edit' && <th rowSpan={2} aria-label="actions" />}
           </tr>
           <tr>
-            {model.columnGroups.map((g) =>
-              model.metrics.map((m) => <th key={`${g.key}.${m.key}`}>{m.label}</th>),
+            {model.columnGroups.map((g, gi) =>
+              model.metrics.map((m, mi) => {
+                const c = metricColStart + gi * model.metrics.length + mi;
+                return (
+                  <th key={`${g.key}.${m.key}`}>
+                    <span className="colhead colhead--center">
+                      <span>{m.label}</span>
+                      {mode === 'edit' && (
+                        <ColMenu
+                          open={menuCol === c}
+                          disabled={rows.length === 0}
+                          onToggle={() => setMenuCol(menuCol === c ? null : c)}
+                          onFillDown={() => fillDown(c)}
+                          onClear={() => clearColumn(c)}
+                        />
+                      )}
+                    </span>
+                  </th>
+                );
+              }),
             )}
           </tr>
         </thead>
         <tbody>
           {rows.map((row, i) => (
             <tr key={i}>
-              {model.dimensions.map((dim) => {
+              {model.dimensions.map((dim, di) => {
                 const errKey = `rows[${i}].dimensions.${dim.key}`;
                 return (
                   <td key={dim.key} className="matrix__dim">
@@ -255,13 +458,20 @@ function TableRenderer({
                       id={errKey}
                       error={errors?.[errKey]}
                       mode={mode}
-                      onChange={(v) => setDim(i, dim.key, v)}
+                      dataR={i}
+                      dataC={di}
+                      onFocus={() => (focused.current = { r: i, c: di })}
+                      onKeyDown={(e) =>
+                        onCellKeyDown(e, i, di, dim.type === 'integer' || dim.type === 'number')
+                      }
+                      onChange={(v) => setOne(i, di, v)}
                     />
                   </td>
                 );
               })}
-              {model.columnGroups.map((g) =>
-                model.metrics.map((m) => {
+              {model.columnGroups.map((g, gi) =>
+                model.metrics.map((m, mi) => {
+                  const c = metricColStart + gi * model.metrics.length + mi;
                   const errKey = `rows[${i}].cells.${g.key}.${m.key}`;
                   const err = errors?.[errKey];
                   const value = row.cells?.[g.key]?.[m.key] ?? null;
@@ -276,6 +486,8 @@ function TableRenderer({
                     <td key={`${g.key}.${m.key}`}>
                       <input
                         id={errKey}
+                        data-r={i}
+                        data-c={c}
                         type="number"
                         min={0}
                         step={1}
@@ -284,7 +496,13 @@ function TableRenderer({
                         value={value ?? ''}
                         title={err ?? undefined}
                         aria-invalid={err ? true : undefined}
-                        onChange={(e) => setCell(i, g.key, m.key, e.target.value)}
+                        onFocus={() => (focused.current = { r: i, c })}
+                        onKeyDown={(e) => onCellKeyDown(e, i, c, true)}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const parsed = raw === '' ? null : Number(raw);
+                          setOne(i, c, raw !== '' && Number.isNaN(parsed) ? null : parsed);
+                        }}
                       />
                     </td>
                   );
@@ -304,10 +522,21 @@ function TableRenderer({
               )}
             </tr>
           ))}
+          {showTotals && (
+            <tr className="matrix__total">
+              <td className="matrix__dim" colSpan={model.dimensions.length}>
+                Total
+              </td>
+              {columns.slice(metricColStart).map((col, idx) => (
+                <td key={idx}>{totals[metricColStart + idx]}</td>
+              ))}
+              {mode === 'edit' && <td />}
+            </tr>
+          )}
           {rows.length === 0 && (
             <tr>
               <td colSpan={totalCols} className="muted" style={{ textAlign: 'center', padding: 16 }}>
-                No rows yet.{mode === 'edit' ? ' Use “Add row” to start entering data.' : ''}
+                No rows yet.{mode === 'edit' ? ' Use “Add row” or paste from Excel to start.' : ''}
               </td>
             </tr>
           )}
@@ -318,11 +547,10 @@ function TableRenderer({
           <button type="button" className="btn btn--secondary btn--sm" onClick={addRow}>
             + Add row
           </button>
-          {model.minRows > 0 && (
-            <span className="text-sm muted" style={{ marginLeft: 10 }}>
-              At least {model.minRows} row(s) required to submit.
-            </span>
-          )}
+          <span className="text-sm muted" style={{ marginLeft: 10 }}>
+            Tip: paste a block from Excel, or press Enter / ↑ ↓ to move between rows.
+            {model.minRows > 0 ? ` At least ${model.minRows} row(s) required to submit.` : ''}
+          </span>
         </div>
       )}
       {model.notes && model.notes.length > 0 && (
@@ -338,12 +566,76 @@ function TableRenderer({
   );
 }
 
+/** Coerce a pasted string to the right type for a column. */
+function coerceForColumn(col: ColDesc, raw: string): string | number | null {
+  const s = raw.trim();
+  if (s === '') return null;
+  if (col.kind === 'metric') {
+    const n = Number(s.replace(/,/g, ''));
+    return Number.isFinite(n) ? n : null;
+  }
+  const t = col.dim.type;
+  if (t === 'integer' || t === 'number') {
+    const n = Number(s.replace(/,/g, ''));
+    return Number.isFinite(n) ? n : s;
+  }
+  if (t === 'select') {
+    const match = col.dim.options?.find(
+      (o) => o.label.toLowerCase() === s.toLowerCase() || o.value.toLowerCase() === s.toLowerCase(),
+    );
+    return match ? match.value : s;
+  }
+  return s;
+}
+
+function ColMenu({
+  open,
+  disabled,
+  onToggle,
+  onFillDown,
+  onClear,
+}: {
+  open: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  onFillDown: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <span className="colmenu">
+      <button
+        type="button"
+        className="colmenu__btn"
+        aria-label="Column actions"
+        title="Column actions"
+        onClick={onToggle}
+      >
+        ▾
+      </button>
+      {open && (
+        <span className="colmenu__pop" role="menu">
+          <button type="button" onClick={onFillDown} disabled={disabled}>
+            Fill down
+          </button>
+          <button type="button" onClick={onClear} disabled={disabled}>
+            Clear column
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function TableDimControl({
   dim,
   value,
   id,
   error,
   mode,
+  dataR,
+  dataC,
+  onFocus,
+  onKeyDown,
   onChange,
 }: {
   dim: RenderTableDimension;
@@ -351,6 +643,10 @@ function TableDimControl({
   id: string;
   error?: string;
   mode: 'edit' | 'read';
+  dataR: number;
+  dataC: number;
+  onFocus: () => void;
+  onKeyDown: (e: React.KeyboardEvent) => void;
   onChange: (value: string | number | null) => void;
 }) {
   if (mode === 'read') {
@@ -362,16 +658,20 @@ function TableDimControl({
   }
 
   const cls = `cell-input${error ? ' cell-input--error' : ''}`;
+  const common = {
+    id,
+    className: cls,
+    'data-r': dataR,
+    'data-c': dataC,
+    title: error ?? undefined,
+    'aria-invalid': error ? true : undefined,
+    onFocus,
+    onKeyDown,
+  } as const;
+
   if (dim.type === 'select') {
     return (
-      <select
-        id={id}
-        className={cls}
-        value={(value as string) ?? ''}
-        title={error ?? undefined}
-        aria-invalid={error ? true : undefined}
-        onChange={(e) => onChange(e.target.value || null)}
-      >
+      <select {...common} value={(value as string) ?? ''} onChange={(e) => onChange(e.target.value || null)}>
         <option value="">—</option>
         {dim.options?.map((o) => (
           <option key={o.value} value={o.value}>
@@ -384,13 +684,10 @@ function TableDimControl({
   const type = dim.type === 'date' ? 'date' : dim.type === 'text' ? 'text' : 'number';
   return (
     <input
-      id={id}
-      className={cls}
+      {...common}
       type={type}
       step={dim.type === 'integer' ? 1 : type === 'number' ? 'any' : undefined}
       value={(value as string | number) ?? ''}
-      title={error ?? undefined}
-      aria-invalid={error ? true : undefined}
       onChange={(e) =>
         onChange(
           type === 'number'

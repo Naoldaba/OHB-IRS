@@ -6,12 +6,26 @@
  * no per-report code.
  */
 
-import type { MatrixFieldSchema, SimpleFieldSchema, TableFieldSchema } from '@ohb/shared';
+import type {
+  DocumentFieldSchema,
+  MatrixFieldSchema,
+  SimpleFieldSchema,
+  TableFieldSchema,
+} from '@ohb/shared';
 
 export function emptySimpleSchema(): SimpleFieldSchema {
   return {
     layout: 'simple',
     sections: [{ key: 'section_1', label: 'Section 1', fields: [] }],
+  };
+}
+
+export function emptyDocumentSchema(): DocumentFieldSchema {
+  return {
+    layout: 'document',
+    instructions: '',
+    minAttachments: 1,
+    allowedFileTypes: [],
   };
 }
 
