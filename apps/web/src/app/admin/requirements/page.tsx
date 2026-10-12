@@ -8,12 +8,19 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, FileText } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import type { Laboratory, ReportType, ReportingRequirement } from '@/lib/types';
 import { Button, Callout, Card, Field, Pill, Spinner } from '@/components/ui';
 
 const ALL_LABS = '__all__';
+
+/** Report names can repeat across categories, so qualify the label with the
+ *  category (when known) plus the default frequency. */
+function typeLabel(t: ReportType) {
+  const freq = t.defaultFrequency.toLowerCase();
+  return t.category?.name ? `${t.category.name} · ${t.name} (${freq})` : `${t.name} (${freq})`;
+}
 
 export default function RequirementsPage() {
   const [types, setTypes] = useState<ReportType[] | null>(null);
@@ -60,6 +67,9 @@ export default function RequirementsPage() {
   const activeLabs = labs.filter((l) => l.isActive);
   const hasAllLabsRule = requirements.some((r) => r.laboratoryId === null);
   const requiredLabIds = new Set(requirements.map((r) => r.laboratoryId).filter(Boolean) as string[]);
+  const activeCount = requirements.filter((r) => r.isActive).length;
+  const configured = activeCount > 0;
+  const reportLabel = selectedType ? typeLabel(selectedType) : '';
 
   return (
     <>
@@ -78,20 +88,21 @@ export default function RequirementsPage() {
         </Callout>
       ) : (
         <>
-          <Card>
-            <Field label="Report type">
-              <select
-                className="select"
-                value={selectedTypeId}
-                onChange={(e) => setSelectedTypeId(e.target.value)}
-              >
-                {types.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} ({t.defaultFrequency.toLowerCase()})
-                  </option>
-                ))}
-              </select>
-            </Field>
+          <Card className="req-selectcard">
+            <div className="micro-label" style={{ marginBottom: 8 }}>
+              Report type
+            </div>
+            <select
+              className="select"
+              value={selectedTypeId}
+              onChange={(e) => setSelectedTypeId(e.target.value)}
+            >
+              {types.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {typeLabel(t)}
+                </option>
+              ))}
+            </select>
           </Card>
 
           <div className="split" style={{ marginTop: 18 }}>
@@ -105,10 +116,34 @@ export default function RequirementsPage() {
               />
             )}
 
-            <Card title="Expected to submit">
+            <Card
+              className="req-expected"
+              title={
+                <span className="req-expected__title">
+                  Expected to submit
+                  <span className="req-chip">
+                    {activeCount} active rule{activeCount === 1 ? '' : 's'}
+                  </span>
+                </span>
+              }
+              actions={
+                reportLabel ? (
+                  <span className="req-expected__meta">Report: {reportLabel}</span>
+                ) : undefined
+              }
+            >
               {requirements.length === 0 ? (
-                <div className="table__empty">
-                  No requirements yet. Nothing is counted as expected for this report.
+                <div className="req-empty">
+                  <div className="req-empty__icon" aria-hidden>
+                    <FileText size={26} />
+                  </div>
+                  <div className="req-empty__title">
+                    No requirements yet. Nothing is counted as expected for this report.
+                  </div>
+                  <div className="req-empty__body">
+                    Use the form on the left to designate laboratories or cohorts required to
+                    submit data under this schedule.
+                  </div>
                 </div>
               ) : (
                 <table className="table">
@@ -130,6 +165,16 @@ export default function RequirementsPage() {
                   </tbody>
                 </table>
               )}
+
+              <div className="req-statusbar">
+                <span className={`req-statusbar__state${configured ? ' is-ok' : ''}`}>
+                  <span className="req-statusbar__dot" />
+                  {configured ? 'Reporting rule configured' : 'Unconfigured reporting rule'}
+                </span>
+                <span className="req-statusbar__calc">
+                  {configured ? 'Compliance calculation active' : 'Compliance calculation paused'}
+                </span>
+              </div>
             </Card>
           </div>
         </>
@@ -229,7 +274,7 @@ function AddRequirementCard({
   }
 
   return (
-    <Card title="Add a requirement">
+    <Card title="Add a requirement" desc="Assign target submission groups">
       <form onSubmit={submit}>
         {error && (
           <div style={{ marginBottom: 12 }}>

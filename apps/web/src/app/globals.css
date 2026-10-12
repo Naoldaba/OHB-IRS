@@ -250,90 +250,23 @@ h4 {
   color: var(--text-muted);
 }
 
-.nav {
-  display: flex;
-  gap: 4px;
-  margin-left: 12px;
-  flex-wrap: wrap;
-}
-.nav a {
-  color: var(--text-muted);
-  padding: 7px 12px;
-  border-radius: 8px;
-  font-weight: 500;
-  font-size: 14px;
-}
-.nav a:hover {
-  background: var(--surface-muted);
-  text-decoration: none;
-}
-.nav a.active {
-  color: var(--primary);
-  background: var(--surface-muted);
-}
-
-/* Collapsible nav group (header dropdown, e.g. Administration). */
-.nav__group {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.nav__trigger {
+/* Hamburger: toggles the sidebar rail (desktop) / drawer (narrow). */
+.app-header__menu {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 7px 10px 7px 12px;
-  border-radius: 8px;
-  font-weight: 500;
-  font-size: 14px;
-  font-family: inherit;
-}
-.nav__trigger:hover {
-  background: var(--surface-muted);
-}
-.nav__trigger.active {
-  color: var(--primary);
-  background: var(--surface-muted);
-}
-.nav__chevron {
-  transition: transform 0.15s ease;
-}
-.nav__trigger[aria-expanded='true'] .nav__chevron {
-  transform: rotate(180deg);
-}
-.nav__menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  min-width: 180px;
-  background: var(--surface);
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
   border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-pop);
-  z-index: 50;
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.nav__menu a {
+  border-radius: var(--radius-control);
+  background: var(--surface);
   color: var(--text-muted);
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-weight: 500;
-  font-size: 14px;
+  cursor: pointer;
 }
-.nav__menu a:hover {
+.app-header__menu:hover {
   background: var(--surface-muted);
-  text-decoration: none;
-}
-.nav__menu a.active {
-  color: var(--primary);
-  background: var(--surface-muted);
+  color: var(--text);
 }
 
 .app-header__spacer {
@@ -806,6 +739,20 @@ h4 {
   flex-direction: column;
   min-height: 100vh;
 }
+/* Sidebar + content sit side by side beneath the full-width header. The main
+   column stretches to the full body height so the footer pins to the bottom on
+   short pages; the sidebar opts out of the stretch via its own align-self. */
+.app-body {
+  display: flex;
+  align-items: stretch;
+  flex: 1 0 auto;
+}
+.app-main {
+  flex: 1 1 auto;
+  min-width: 0; /* let the content shrink instead of forcing page-wide scroll */
+  display: flex;
+  flex-direction: column;
+}
 .page {
   width: 100%;
   max-width: var(--content-max);
@@ -813,6 +760,164 @@ h4 {
   padding: 28px var(--content-gutter) 56px;
   /* Grow to fill the viewport so the footer sits at the bottom on short pages. */
   flex: 1 0 auto;
+}
+
+/* ---- Sidebar navigation ---- */
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: none;
+  width: 248px;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  transition: width 0.18s ease;
+}
+.sidebar.is-collapsed {
+  width: 64px;
+}
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 12px;
+}
+.sidebar.is-collapsed .sidebar__nav {
+  padding: 16px 10px;
+}
+.sidebar__section-label {
+  padding: 4px 10px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar.is-collapsed .sidebar__section-label {
+  visibility: hidden;
+  height: 8px;
+  padding: 0;
+}
+.sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 11px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-control);
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sidebar__link:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+  text-decoration: none;
+}
+.sidebar__link.active {
+  color: var(--primary);
+  background: var(--surface-muted);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+.sidebar__icon {
+  flex: none;
+}
+.sidebar__label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar.is-collapsed .sidebar__label {
+  display: none;
+}
+.sidebar__chevron {
+  flex: none;
+  transition: transform 0.15s ease;
+}
+.sidebar__grouptrigger[aria-expanded='true'] .sidebar__chevron {
+  transform: rotate(180deg);
+}
+.sidebar__sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 2px 25px;
+  padding-left: 9px;
+  border-left: 1px solid var(--border);
+}
+.sidebar__sublink {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 13.5px;
+}
+.sidebar__sublink:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+  text-decoration: none;
+}
+.sidebar__sublink.active {
+  color: var(--primary);
+  background: var(--surface-muted);
+  font-weight: 600;
+}
+/* Collapsed rail: a group's children appear in a flyout popover. */
+.sidebar__group {
+  position: relative;
+}
+.sidebar__flyout {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 8px);
+  min-width: 190px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-pop);
+  z-index: 55;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar__flyout-title {
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sidebar__flyout a {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 14px;
+}
+.sidebar__flyout a:hover {
+  background: var(--surface-muted);
+  color: var(--text);
+  text-decoration: none;
+}
+.sidebar__flyout a.active {
+  color: var(--primary);
+  background: var(--surface-muted);
+}
+.sidebar-backdrop {
+  display: none;
 }
 .page-head {
   margin-bottom: 22px;
@@ -1917,6 +2022,40 @@ h4 {
     --content-max: 100%;
     --content-gutter: 16px;
   }
+  /* Sidebar becomes an off-canvas drawer toggled by the header hamburger. */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 260px;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    box-shadow: var(--shadow-pop);
+  }
+  /* Ignore the desktop rail on narrow screens — the drawer always shows labels. */
+  .sidebar.is-collapsed {
+    width: 260px;
+  }
+  .sidebar.is-collapsed .sidebar__label {
+    display: flex;
+  }
+  .sidebar.is-collapsed .sidebar__section-label {
+    visibility: visible;
+    height: auto;
+    padding: 4px 10px 10px;
+  }
+  .sidebar.is-open {
+    transform: translateX(0);
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 65;
+    background: rgba(16, 24, 40, 0.45);
+  }
   .split {
     grid-template-columns: 1fr;
   }
@@ -2261,4 +2400,344 @@ button.auth-link {
   border-radius: 10px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ---- Reporting Periods & Calendar Governance (redesign) ------------------- */
+.breadcrumb {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+}
+.breadcrumb span {
+  margin: 0 6px;
+  color: var(--text-faint);
+}
+.breadcrumb b {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.periods-typepick {
+  min-width: 300px;
+  max-width: 360px;
+}
+.periods-typepick .field {
+  margin-bottom: 0;
+}
+
+/* Active reporting cycle banner */
+.periods-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--state-pending);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.periods-banner--open {
+  border-left-color: var(--state-approved);
+}
+.periods-banner--upcoming {
+  border-left-color: var(--state-review);
+}
+.periods-banner--closed {
+  border-left-color: var(--state-pending);
+}
+.periods-banner__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  border-radius: 12px;
+  background: var(--surface-muted);
+  color: var(--primary-accent);
+}
+.periods-banner__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.periods-banner__eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+.periods-banner__title {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 2px;
+}
+.periods-banner__title span {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 15px;
+}
+.periods-banner__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.periods-banner__status {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  text-align: right;
+}
+.periods-banner__due {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.periods-banner__due b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Two-column body: orchestrator + calendar matrix */
+.periods-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 360px) 1fr;
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 22px;
+}
+.year-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.year-stepper .input {
+  text-align: center;
+}
+.cal-year__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cal-year__btn:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* Calendar matrix card */
+.cal-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.cal-year {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+.cal-year__value {
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  min-width: 78px;
+  text-align: center;
+}
+.cal-quarters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.quarter-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quarter-col__head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+}
+.month-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius-control);
+  padding: 9px 10px;
+  background: var(--surface);
+}
+.month-card__num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.month-card__name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.month-card__state {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 3px;
+  color: var(--text-muted);
+}
+.month-card.is-open {
+  border-left-color: var(--state-approved);
+  background: color-mix(in srgb, var(--state-approved) 8%, var(--surface));
+}
+.month-card.is-open .month-card__state {
+  color: var(--state-approved);
+}
+.month-card.is-upcoming {
+  border-left-color: var(--state-review);
+}
+.month-card.is-upcoming .month-card__state {
+  color: var(--state-review);
+}
+.month-card.is-closed {
+  border-left-color: var(--state-pending);
+}
+.month-card.is-none {
+  border-style: dashed;
+  border-left-style: solid;
+  background: var(--surface-muted);
+}
+.month-card.is-none .month-card__name,
+.month-card.is-none .month-card__state {
+  color: var(--text-faint);
+}
+
+@media (max-width: 1040px) {
+  .cal-quarters {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (max-width: 860px) {
+  .periods-grid {
+    grid-template-columns: 1fr;
+  }
+  .periods-typepick {
+    max-width: none;
+    width: 100%;
+  }
+  .periods-banner {
+    flex-wrap: wrap;
+  }
+  .periods-banner__status {
+    align-items: flex-start;
+    text-align: left;
+  }
+}
+
+/* ---- Reporting requirements (redesign) ------------------------------------ */
+.req-selectcard .select {
+  font-weight: 600;
+}
+.req-expected__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.req-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.req-expected__meta {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+/* Expected-to-submit empty state */
+.req-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+  min-height: 210px;
+  padding: 18px 12px;
+}
+.req-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.req-empty__title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  max-width: 420px;
+}
+.req-empty__body {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 420px;
+  line-height: 1.5;
+}
+/* Compliance status footer of the Expected-to-submit card */
+.req-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.req-statusbar__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--status-amber);
+}
+.req-statusbar__state.is-ok {
+  color: var(--status-green);
+}
+.req-statusbar__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.req-statusbar__calc {
+  color: var(--text-muted);
 }
