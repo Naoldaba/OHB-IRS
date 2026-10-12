@@ -43,8 +43,10 @@ export function validateFieldSchema(schema: unknown): SchemaValidationResult {
     validateSimple(schema as Record<string, unknown>, errors);
   } else if (layout === 'matrix') {
     validateMatrix(schema as Record<string, unknown>, errors);
+  } else if (layout === 'table') {
+    validateTable(schema as Record<string, unknown>, errors);
   } else {
-    errors.push({ path: 'layout', message: "layout must be 'simple' or 'matrix'" });
+    errors.push({ path: 'layout', message: "layout must be 'simple', 'matrix', or 'table'" });
   }
 
   return { ok: errors.length === 0, errors };
@@ -159,6 +161,54 @@ function validateMatrix(schema: Record<string, unknown>, errors: ValidationError
       });
     }
   });
+}
+
+function validateTable(schema: Record<string, unknown>, errors: ValidationError[]): void {
+  const dimensions = schema.dimensions;
+  const columnGroups = schema.columnGroups;
+  const metrics = schema.metrics;
+
+  if (!Array.isArray(dimensions) || dimensions.length === 0) {
+    errors.push({ path: 'dimensions', message: 'a table schema needs at least one dimension column' });
+  }
+  if (!Array.isArray(columnGroups) || columnGroups.length === 0) {
+    errors.push({ path: 'columnGroups', message: 'a table schema needs at least one column group' });
+  }
+  if (!Array.isArray(metrics) || metrics.length === 0) {
+    errors.push({ path: 'metrics', message: 'a table schema needs at least one metric' });
+  }
+  if (errors.length > 0) return;
+
+  const dimKeys = new Set<string>();
+  (dimensions as unknown[]).forEach((dim, di) => {
+    const d = dim as Record<string, unknown>;
+    const dPath = `dimensions[${di}]`;
+    if (checkKey(d.key, `${dPath}.key`, errors)) {
+      if (dimKeys.has(d.key as string)) {
+        errors.push({ path: `${dPath}.key`, message: `duplicate dimension key "${d.key}"` });
+      }
+      dimKeys.add(d.key as string);
+    }
+    if (typeof d.label !== 'string' || d.label.trim() === '') {
+      errors.push({ path: `${dPath}.label`, message: 'dimension label is required' });
+    }
+    if (typeof d.type !== 'string' || !SIMPLE_FIELD_TYPES.has(d.type)) {
+      errors.push({ path: `${dPath}.type`, message: `type must be one of ${[...SIMPLE_FIELD_TYPES].join(', ')}` });
+    }
+    if (d.type === 'select') {
+      const options = d.options;
+      if (!Array.isArray(options) || options.length === 0) {
+        errors.push({ path: `${dPath}.options`, message: 'a select dimension needs at least one option' });
+      }
+    }
+  });
+
+  collectKeys(columnGroups as unknown[], 'columnGroups', errors);
+  collectKeys(metrics as unknown[], 'metrics', errors);
+
+  if (schema.minRows !== undefined && (typeof schema.minRows !== 'number' || schema.minRows < 0)) {
+    errors.push({ path: 'minRows', message: 'minRows must be a non-negative number' });
+  }
 }
 
 /** Validates keys/labels of a {key,label} list and returns the set of keys. */

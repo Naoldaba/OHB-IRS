@@ -13,7 +13,7 @@
  * selector. This is the single place that knows how data is laid out per layout.
  */
 
-import { FieldSchema, isMatrixSchema } from '../field-schema';
+import { FieldSchema, isMatrixSchema, isTableSchema } from '../field-schema';
 import { FieldValueType } from './rule-ast';
 
 export interface FieldCatalogEntry {
@@ -44,6 +44,14 @@ export function buildFieldCatalog(schema: FieldSchema): FieldCatalogEntry[] {
         }
       }
     }
+    return entries;
+  }
+
+  // `table` rows are open-ended, so there are no fixed, addressable field paths
+  // for the rule engine to target. Business rules on table reports are deferred
+  // (a later enhancement would introduce row-scoped rules); the structural
+  // validator still enforces dimension types, required-ness and metric cells.
+  if (isTableSchema(schema)) {
     return entries;
   }
 

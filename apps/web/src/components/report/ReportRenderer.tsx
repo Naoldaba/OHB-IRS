@@ -17,6 +17,8 @@ import type {
   RenderModel,
   SimpleRenderModel,
   RenderSimpleField,
+  TableRenderModel,
+  RenderTableDimension,
 } from '@ohb/shared';
 
 type Data = Record<string, unknown>;
@@ -33,6 +35,9 @@ export interface ReportRendererProps {
 export function ReportRenderer(props: ReportRendererProps) {
   if (props.model.layout === 'matrix') {
     return <MatrixRenderer {...props} model={props.model} />;
+  }
+  if (props.model.layout === 'table') {
+    return <TableRenderer {...props} model={props.model} />;
   }
   return <SimpleRenderer {...props} model={props.model} />;
 }
@@ -150,6 +155,252 @@ function MatrixRenderer({
         </div>
       )}
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Table (repeating rows)                                                     */
+/* -------------------------------------------------------------------------- */
+
+type TableRow = {
+  dimensions: Record<string, string | number | null>;
+  cells: Record<string, Record<string, number | null>>;
+};
+
+function blankTableRow(model: TableRenderModel): TableRow {
+  const dimensions: Record<string, string | number | null> = {};
+  for (const d of model.dimensions) dimensions[d.key] = null;
+  const cells: Record<string, Record<string, number | null>> = {};
+  for (const g of model.columnGroups) {
+    const cell: Record<string, number | null> = {};
+    for (const m of model.metrics) cell[m.key] = null;
+    cells[g.key] = cell;
+  }
+  return { dimensions, cells };
+}
+
+function TableRenderer({
+  model,
+  data,
+  mode,
+  errors,
+  onChange,
+}: ReportRendererProps & { model: TableRenderModel }) {
+  const rows = (Array.isArray((data as { rows?: unknown })?.rows)
+    ? (data as { rows: TableRow[] }).rows
+    : []) as TableRow[];
+
+  const commit = (next: TableRow[]) => onChange?.({ ...data, rows: next });
+
+  function setDim(i: number, key: string, value: string | number | null) {
+    const next = rows.map((r, ri) =>
+      ri === i ? { ...r, dimensions: { ...r.dimensions, [key]: value } } : r,
+    );
+    commit(next);
+  }
+  function setCell(i: number, groupKey: string, metricKey: string, raw: string) {
+    const parsed = raw === '' ? null : Number(raw);
+    const value = raw !== '' && Number.isNaN(parsed) ? null : parsed;
+    const next = rows.map((r, ri) => {
+      if (ri !== i) return r;
+      const group = { ...(r.cells[groupKey] ?? {}), [metricKey]: value };
+      return { ...r, cells: { ...r.cells, [groupKey]: group } };
+    });
+    commit(next);
+  }
+  function addRow() {
+    commit([...rows, blankTableRow(model)]);
+  }
+  function removeRow(i: number) {
+    commit(rows.filter((_, ri) => ri !== i));
+  }
+
+  const totalCols =
+    model.dimensions.length + model.columnGroups.length * model.metrics.length + (mode === 'edit' ? 1 : 0);
+
+  return (
+    <div className="matrix-wrap">
+      <table className="matrix">
+        <thead>
+          <tr>
+            {model.dimensions.map((d) => (
+              <th key={d.key} className="matrix__rowhead" rowSpan={2}>
+                {d.label}
+                {d.required && <span style={{ color: 'var(--status-red)' }}> *</span>}
+              </th>
+            ))}
+            {model.columnGroups.map((g) => (
+              <th key={g.key} colSpan={model.metrics.length}>
+                {g.label}
+              </th>
+            ))}
+            {mode === 'edit' && <th rowSpan={2} aria-label="actions" />}
+          </tr>
+          <tr>
+            {model.columnGroups.map((g) =>
+              model.metrics.map((m) => <th key={`${g.key}.${m.key}`}>{m.label}</th>),
+            )}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={i}>
+              {model.dimensions.map((dim) => {
+                const errKey = `rows[${i}].dimensions.${dim.key}`;
+                return (
+                  <td key={dim.key} className="matrix__rowhead" style={{ textAlign: 'left' }}>
+                    <TableDimControl
+                      dim={dim}
+                      value={row.dimensions?.[dim.key] ?? null}
+                      id={errKey}
+                      error={errors?.[errKey]}
+                      mode={mode}
+                      onChange={(v) => setDim(i, dim.key, v)}
+                    />
+                  </td>
+                );
+              })}
+              {model.columnGroups.map((g) =>
+                model.metrics.map((m) => {
+                  const errKey = `rows[${i}].cells.${g.key}.${m.key}`;
+                  const err = errors?.[errKey];
+                  const value = row.cells?.[g.key]?.[m.key] ?? null;
+                  if (mode === 'read') {
+                    return (
+                      <td key={`${g.key}.${m.key}`}>
+                        <span className="cell-value">{value ?? '—'}</span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={`${g.key}.${m.key}`}>
+                      <input
+                        id={errKey}
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        className={`cell-input${err ? ' cell-input--error' : ''}`}
+                        value={value ?? ''}
+                        title={err ?? undefined}
+                        aria-invalid={err ? true : undefined}
+                        onChange={(e) => setCell(i, g.key, m.key, e.target.value)}
+                      />
+                    </td>
+                  );
+                }),
+              )}
+              {mode === 'edit' && (
+                <td style={{ textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    title="Remove this row"
+                    onClick={() => removeRow(i)}
+                  >
+                    ✕
+                  </button>
+                </td>
+              )}
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr>
+              <td colSpan={totalCols} className="muted" style={{ textAlign: 'center', padding: 16 }}>
+                No rows yet.{mode === 'edit' ? ' Use “Add row” to start entering data.' : ''}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {mode === 'edit' && (
+        <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)' }}>
+          <button type="button" className="btn btn--secondary btn--sm" onClick={addRow}>
+            + Add row
+          </button>
+          {model.minRows > 0 && (
+            <span className="text-sm muted" style={{ marginLeft: 10 }}>
+              At least {model.minRows} row(s) required to submit.
+            </span>
+          )}
+        </div>
+      )}
+      {model.notes && model.notes.length > 0 && (
+        <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)' }}>
+          {model.notes.map((n, i) => (
+            <div key={i} className="text-sm muted">
+              {n}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TableDimControl({
+  dim,
+  value,
+  id,
+  error,
+  mode,
+  onChange,
+}: {
+  dim: RenderTableDimension;
+  value: string | number | null;
+  id: string;
+  error?: string;
+  mode: 'edit' | 'read';
+  onChange: (value: string | number | null) => void;
+}) {
+  if (mode === 'read') {
+    const display =
+      dim.type === 'select'
+        ? dim.options?.find((o) => o.value === value)?.label ?? (value ?? '—')
+        : value ?? '—';
+    return <span>{String(display)}</span>;
+  }
+
+  const cls = `cell-input${error ? ' cell-input--error' : ''}`;
+  if (dim.type === 'select') {
+    return (
+      <select
+        id={id}
+        className={cls}
+        value={(value as string) ?? ''}
+        title={error ?? undefined}
+        aria-invalid={error ? true : undefined}
+        onChange={(e) => onChange(e.target.value || null)}
+      >
+        <option value="">—</option>
+        {dim.options?.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  const type = dim.type === 'date' ? 'date' : dim.type === 'text' ? 'text' : 'number';
+  return (
+    <input
+      id={id}
+      className={cls}
+      type={type}
+      step={dim.type === 'integer' ? 1 : type === 'number' ? 'any' : undefined}
+      value={(value as string | number) ?? ''}
+      title={error ?? undefined}
+      aria-invalid={error ? true : undefined}
+      onChange={(e) =>
+        onChange(
+          type === 'number'
+            ? e.target.value === ''
+              ? null
+              : Number(e.target.value)
+            : e.target.value || null,
+        )
+      }
+    />
   );
 }
 

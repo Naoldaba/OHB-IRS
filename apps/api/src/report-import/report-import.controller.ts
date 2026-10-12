@@ -1,4 +1,4 @@
-import { Controller, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { type ReportImportResult } from '@ohb/shared';
@@ -19,6 +19,12 @@ const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 export class ReportImportController {
   constructor(private readonly importer: ReportImportService) {}
 
+  /** Whether the "Assist with AI" option should be offered (AI is configured). */
+  @Get('capabilities')
+  capabilities(): { aiAvailable: boolean } {
+    return { aiAvailable: this.importer.aiAvailable() };
+  }
+
   @Post('parse')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -29,7 +35,8 @@ export class ReportImportController {
   parse(
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthUser,
+    @Query('assist') assist?: string,
   ): Promise<ReportImportResult> {
-    return this.importer.parse(file, user.id);
+    return this.importer.parse(file, user.id, assist === 'ai');
   }
 }

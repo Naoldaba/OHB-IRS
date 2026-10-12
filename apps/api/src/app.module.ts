@@ -21,6 +21,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { StorageModule } from './storage/storage.module';
 import { MailModule } from './mail/mail.module';
+import { AiModule } from './ai/ai.module';
 import { AppController } from './app.controller';
 import { PermissionsModule } from './common/permissions.module';
 import { SessionAuthGuard, RolesGuard, PermissionsGuard } from './common/guards';
@@ -49,6 +50,7 @@ import { SessionAuthGuard, RolesGuard, PermissionsGuard } from './common/guards'
     RemindersModule,
     StorageModule,
     MailModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [

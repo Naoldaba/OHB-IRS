@@ -9,7 +9,7 @@
  */
 
 import PDFDocument from 'pdfkit';
-import type { ExportDocModel, KeyValueBlock, MatrixBlock } from '../export-model';
+import type { ExportDocModel, KeyValueBlock, MatrixBlock, TableBlock } from '../export-model';
 
 const NAVY = '#1F3A5F';
 const WHITE = '#FFFFFF';
@@ -33,10 +33,10 @@ interface CellOpts {
 }
 
 export function renderPdf(doc: ExportDocModel): Promise<Buffer> {
-  const hasMatrix = doc.blocks.some((b) => b.kind === 'matrix');
+  const wide = doc.blocks.some((b) => b.kind === 'matrix' || b.kind === 'table');
   const pdf = new PDFDocument({
     size: 'A4',
-    layout: hasMatrix ? 'landscape' : 'portrait',
+    layout: wide ? 'landscape' : 'portrait',
     margin: 40,
     info: { Title: doc.title, Author: 'OHB Integrated Report System' },
   });
@@ -72,8 +72,10 @@ export function renderPdf(doc: ExportDocModel): Promise<Buffer> {
     ensureSpace(pdf, 60);
     if (block.kind === 'keyval') {
       drawKeyVal(pdf, block, left, contentW);
-    } else {
+    } else if (block.kind === 'matrix') {
       drawMatrix(pdf, block, left, contentW);
+    } else {
+      drawTable(pdf, block, left, contentW);
     }
     pdf.moveDown(0.8);
   }
@@ -203,6 +205,78 @@ function drawMatrix(pdf: Doc, block: MatrixBlock, left: number, contentW: number
           fill: c.enabled ? undefined : DISABLED_BG,
           align: 'center',
         });
+        x += colW;
+      }
+    }
+    pdf.y = y + rowH;
+  }
+
+  if (block.notes && block.notes.length > 0) {
+    pdf.moveDown(0.3);
+    for (const note of block.notes) {
+      pdf.font('Helvetica-Oblique').fillColor(MUTED).fontSize(8).text(note, left, pdf.y, { width: contentW });
+    }
+  }
+}
+
+function drawTable(pdf: Doc, block: TableBlock, left: number, contentW: number): void {
+  const metricsPerGroup = block.metrics.length;
+  const dataCols = block.columnGroups.length * metricsPerGroup;
+  // Dimension columns share ~45% of the width; metric columns share the rest.
+  const dimTotalW = Math.min(contentW * 0.45, 110 * block.dimensions.length);
+  const dimW = block.dimensions.length > 0 ? dimTotalW / block.dimensions.length : 0;
+  const colW = dataCols > 0 ? (contentW - dimW * block.dimensions.length) / dataCols : 0;
+  const groupW = colW * metricsPerGroup;
+
+  const h1 = 20; // group header height
+  const h2 = 30; // metric header height
+  const rowH = 20;
+
+  const drawHeader = () => {
+    const y = pdf.y;
+    let x = left;
+    for (const dim of block.dimensions) {
+      cell(pdf, x, y, dimW, h1 + h2, dim.label, {
+        fill: NAVY,
+        color: WHITE,
+        bold: true,
+        align: 'left',
+        fontSize: 8,
+      });
+      x += dimW;
+    }
+    for (const group of block.columnGroups) {
+      cell(pdf, x, y, groupW, h1, group.label, { fill: NAVY, color: WHITE, bold: true, align: 'center' });
+      for (let i = 0; i < metricsPerGroup; i += 1) {
+        cell(pdf, x + i * colW, y + h1, colW, h2, block.metrics[i].label, {
+          fill: NAVY,
+          color: WHITE,
+          bold: true,
+          align: 'center',
+          fontSize: 7,
+        });
+      }
+      x += groupW;
+    }
+    pdf.y = y + h1 + h2;
+  };
+
+  drawHeader();
+
+  for (const row of block.rows) {
+    if (pdf.y + rowH > bottom(pdf)) {
+      pdf.addPage();
+      drawHeader();
+    }
+    const y = pdf.y;
+    let x = left;
+    for (const dimVal of row.dimensions) {
+      cell(pdf, x, y, dimW, rowH, dimVal, { fill: GROUP_BG, bold: true, color: '#334155', fontSize: 8 });
+      x += dimW;
+    }
+    for (const groupCells of row.cells) {
+      for (const c of groupCells) {
+        cell(pdf, x, y, colW, rowH, c, { align: 'center' });
         x += colW;
       }
     }

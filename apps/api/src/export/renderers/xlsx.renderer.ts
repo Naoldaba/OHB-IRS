@@ -7,7 +7,7 @@
  */
 
 import ExcelJS from 'exceljs';
-import type { ExportDocModel, MatrixBlock } from '../export-model';
+import type { ExportDocModel, MatrixBlock, TableBlock } from '../export-model';
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: 'pattern',
@@ -85,8 +85,11 @@ export async function renderXlsx(doc: ExportDocModel): Promise<Buffer> {
         r += 1;
       }
       r += 1;
-    } else {
+    } else if (block.kind === 'matrix') {
       r = renderMatrix(ws, block, r);
+      r += 1;
+    } else {
+      r = renderTable(ws, block, r);
       r += 1;
     }
   }
@@ -168,6 +171,81 @@ function renderMatrix(ws: ExcelJS.Worksheet, block: MatrixBlock, startRow: numbe
   }
 
   // Set a readable width on every data column.
+  const totalDataCols = block.columnGroups.length * metricsPerGroup;
+  for (let i = 0; i < totalDataCols; i += 1) {
+    const column = ws.getColumn(firstDataCol + i);
+    if (!column.width || column.width < 11) column.width = 11;
+  }
+
+  if (block.notes && block.notes.length > 0) {
+    for (const note of block.notes) {
+      ws.getCell(r, 1).value = note;
+      ws.getCell(r, 1).font = { italic: true, size: 9, color: { argb: 'FF64748B' } };
+      r += 1;
+    }
+  }
+  return r;
+}
+
+function renderTable(ws: ExcelJS.Worksheet, block: TableBlock, startRow: number): number {
+  const dimCount = block.dimensions.length;
+  const metricsPerGroup = block.metrics.length;
+  const firstDataCol = dimCount + 1;
+  const groupRow = startRow;
+  const metricRow = startRow + 1;
+
+  // Dimension headers: one column each, merged down the two header rows.
+  let col = 1;
+  for (const dim of block.dimensions) {
+    const c = ws.getCell(groupRow, col);
+    c.value = dim.label;
+    ws.mergeCells(groupRow, col, metricRow, col);
+    styleHeader(c);
+    col += 1;
+  }
+
+  // Group headers + metric sub-headers.
+  col = firstDataCol;
+  for (const group of block.columnGroups) {
+    const c = ws.getCell(groupRow, col);
+    c.value = group.label;
+    if (metricsPerGroup > 1) {
+      ws.mergeCells(groupRow, col, groupRow, col + metricsPerGroup - 1);
+    }
+    styleHeader(c);
+    for (let i = 0; i < metricsPerGroup; i += 1) {
+      const mc = ws.getCell(metricRow, col + i);
+      mc.value = block.metrics[i].label;
+      styleHeader(mc);
+    }
+    col += metricsPerGroup;
+  }
+
+  let r = metricRow + 1;
+  for (const row of block.rows) {
+    let c = 1;
+    for (const dimVal of row.dimensions) {
+      const cc = ws.getCell(r, c);
+      cc.value = dimVal === '' ? null : coerceNumber(dimVal);
+      cc.border = THIN_BORDER;
+      c += 1;
+    }
+    for (const groupCells of row.cells) {
+      for (const cell of groupCells) {
+        const cc = ws.getCell(r, c);
+        cc.border = THIN_BORDER;
+        cc.alignment = { horizontal: 'center' };
+        cc.value = cell === '' ? null : coerceNumber(cell);
+        c += 1;
+      }
+    }
+    r += 1;
+  }
+
+  for (let i = 0; i < dimCount; i += 1) {
+    const column = ws.getColumn(1 + i);
+    if (!column.width || column.width < 16) column.width = 16;
+  }
   const totalDataCols = block.columnGroups.length * metricsPerGroup;
   for (let i = 0; i < totalDataCols; i += 1) {
     const column = ws.getColumn(firstDataCol + i);

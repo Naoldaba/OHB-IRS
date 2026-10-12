@@ -41,6 +41,17 @@ export function anchorOptions(model: RenderModel | null): AnchorOption[] {
     return out;
   }
 
+  if (model.layout === 'table') {
+    // Rows are open-ended, so anchors are the dimension and metric columns.
+    for (const dim of model.dimensions) {
+      out.push({ id: `d:${dim.key}`, label: `Column: ${dim.label}`, fieldKey: dim.key });
+    }
+    for (const metric of model.metrics) {
+      out.push({ id: `m:${metric.key}`, label: `Metric: ${metric.label}`, fieldKey: metric.key });
+    }
+    return out;
+  }
+
   // matrix
   for (const row of model.rows) {
     out.push({ id: `r:${row.key}`, label: `Row: ${row.label}`, sectionKey: row.key });

@@ -43,7 +43,22 @@ export interface MatrixBlock {
   notes?: string[];
 }
 
-export type ExportBlock = KeyValueBlock | MatrixBlock;
+/** A repeating-row table block — dimension columns + grouped metric columns. */
+export interface TableBlock {
+  kind: 'table';
+  dimensions: { key: string; label: string }[];
+  columnGroups: { key: string; label: string }[];
+  metrics: { key: string; label: string }[];
+  rows: {
+    /** Display values aligned to `dimensions`. */
+    dimensions: string[];
+    /** cells[groupIndex][metricIndex] — aligned to columnGroups × metrics. */
+    cells: string[][];
+  }[];
+  notes?: string[];
+}
+
+export type ExportBlock = KeyValueBlock | MatrixBlock | TableBlock;
 
 export interface ExportFlag {
   message: string;
@@ -110,6 +125,33 @@ export function buildExportDocModel(args: BuildExportDocArgs): ExportDocModel {
         }),
       });
     }
+  } else if (renderModel.layout === 'table') {
+    const rawRows = Array.isArray((data as { rows?: unknown })?.rows)
+      ? ((data as { rows: Record<string, unknown>[] }).rows)
+      : [];
+    blocks.push({
+      kind: 'table',
+      dimensions: renderModel.dimensions.map((d) => ({ key: d.key, label: d.label })),
+      columnGroups: renderModel.columnGroups,
+      metrics: renderModel.metrics,
+      rows: rawRows.map((row) => {
+        const dims = (row?.dimensions ?? {}) as Record<string, unknown>;
+        const cells = (row?.cells ?? {}) as Record<string, Record<string, unknown>>;
+        return {
+          dimensions: renderModel.dimensions.map((d) => {
+            const raw = dims[d.key];
+            if (d.type === 'select' && d.options) {
+              return d.options.find((o) => o.value === raw)?.label ?? displayScalar(raw);
+            }
+            return displayScalar(raw);
+          }),
+          cells: renderModel.columnGroups.map((group) =>
+            renderModel.metrics.map((metric) => displayScalar(cells?.[group.key]?.[metric.key])),
+          ),
+        };
+      }),
+      notes: renderModel.notes,
+    });
   } else {
     const rows = (data?.rows ?? {}) as Record<
       string,

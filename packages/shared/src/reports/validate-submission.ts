@@ -8,13 +8,14 @@
  * rules are a separate configurable layer (IMPLEMENTATION_PLAN §6).
  */
 
-import { FieldSchema, isMatrixSchema, SimpleFieldSchema } from './field-schema';
+import { FieldSchema, isMatrixSchema, isTableSchema, SimpleFieldSchema } from './field-schema';
 import {
   validateMatrixReportData,
   ValidationError,
   ValidateOptions,
   emptyMatrixData,
 } from './validate-matrix';
+import { emptyTableData, validateTableReportData } from './validate-table';
 
 export interface SubmissionValidationResult {
   ok: boolean;
@@ -36,6 +37,14 @@ export function validateSubmissionData(
       normalized: result.normalized as unknown as Record<string, unknown>,
     };
   }
+  if (isTableSchema(schema)) {
+    const result = validateTableReportData(schema, data, options);
+    return {
+      ok: result.ok,
+      errors: result.errors,
+      normalized: result.normalized as unknown as Record<string, unknown>,
+    };
+  }
   return validateSimpleData(schema, data, options);
 }
 
@@ -43,6 +52,9 @@ export function validateSubmissionData(
 export function emptySubmissionData(schema: FieldSchema): Record<string, unknown> {
   if (isMatrixSchema(schema)) {
     return emptyMatrixData(schema) as unknown as Record<string, unknown>;
+  }
+  if (isTableSchema(schema)) {
+    return emptyTableData() as unknown as Record<string, unknown>;
   }
   const values: Record<string, unknown> = {};
   for (const section of schema.sections) {

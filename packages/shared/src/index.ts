@@ -7,6 +7,7 @@ export * from './reports/validate-matrix';
 export * from './reports/field-schema';
 export * from './reports/import-summary';
 export * from './reports/validate-field-schema';
+export * from './reports/validate-table';
 export * from './reports/validate-submission';
 export * from './reports/render-model';
 export * from './reports/workflow';

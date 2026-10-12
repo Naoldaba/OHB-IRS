@@ -37,6 +37,38 @@ function toGridCell(value: ExcelJS.CellValue): GridCell {
   return { text: '', numeric: null };
 }
 
+/**
+ * Whether a cell is shaded a neutral grey (the convention for a non-applicable
+ * matrix cell). Reads the cell's solid fill only — a colour, never a value.
+ * Handles both explicit ARGB greys (BFBFBF, A6A6A6, D9D9D9, 808080, …) and the
+ * common theme-tint greys ("White, Background 1, Darker 25%" = theme 0 + a
+ * negative tint; "Black, Text 1, Lighter …" = theme 1 + a positive tint).
+ * Coloured header fills (green/blue/orange) are not neutral, so they're excluded.
+ */
+function isGreyFill(cell: ExcelJS.Cell): boolean {
+  const fill = cell.fill as Partial<ExcelJS.FillPattern> | undefined;
+  if (!fill || fill.type !== 'pattern' || fill.pattern !== 'solid') return false;
+  const fg = fill.fgColor as { argb?: string; theme?: number; tint?: number } | undefined;
+  if (!fg) return false;
+
+  if (typeof fg.argb === 'string' && fg.argb.length >= 6) {
+    const hex = fg.argb.slice(-6);
+    const r = parseInt(hex.slice(0, 2), 16);
+    const g = parseInt(hex.slice(2, 4), 16);
+    const b = parseInt(hex.slice(4, 6), 16);
+    const neutral = Math.abs(r - g) <= 18 && Math.abs(g - b) <= 18 && Math.abs(r - b) <= 18;
+    // Grey band only: excludes white (~FF) and near-black.
+    return neutral && r >= 0x55 && r <= 0xe6;
+  }
+
+  if (typeof fg.theme === 'number') {
+    const tint = typeof fg.tint === 'number' ? fg.tint : 0;
+    if (fg.theme === 0 && tint <= -0.05) return true; // white background, darkened -> grey
+    if (fg.theme === 1 && tint >= 0.05) return true; // black text, lightened -> grey
+  }
+  return false;
+}
+
 /** A string is a "plain number" only if it parses cleanly and wholly to one. */
 function plainNumber(text: string): number | null {
   if (text === '') return null;
@@ -51,7 +83,10 @@ export function extractGrid(ws: ExcelJS.Worksheet): Grid {
   for (let r = 1; r <= rowCount; r += 1) {
     const row: GridCell[] = [];
     for (let c = 1; c <= colCount; c += 1) {
-      row.push(toGridCell(ws.getCell(r, c).value));
+      const cell = ws.getCell(r, c);
+      const gridCell = toGridCell(cell.value);
+      if (isGreyFill(cell)) gridCell.disabled = true;
+      row.push(gridCell);
     }
     grid.push(row);
   }

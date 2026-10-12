@@ -27,6 +27,8 @@ import type {
   SimpleFieldDef,
   SimpleFieldSchema,
   SimpleFieldType,
+  TableDimensionColumn,
+  TableFieldSchema,
 } from '@ohb/shared';
 
 export interface GridCell {
@@ -34,6 +36,13 @@ export interface GridCell {
   text: string;
   /** Parsed numeric value when the cell is a plain number, else null. */
   numeric: number | null;
+  /**
+   * True when the cell is shaded grey in the source sheet. In a matrix report the
+   * greyed cells are the *non-applicable* cells (the per-row applicable mask), so
+   * this lets the parser reproduce the mask instead of defaulting to "all". Reads
+   * cell formatting only — never a data value — so it stays structure-only.
+   */
+  disabled?: boolean;
 }
 
 /** Row-major, 0-indexed, rectangular grid of cells. */
@@ -206,11 +215,25 @@ function parseMatrix(region: Grid, twoHeaderRows: boolean): ReportImportResult {
     }
   }
 
-  // Rows.
+  // Data columns, in order, each already mapped to a metric index above. A metric
+  // repeats across column groups, so collect every column that carries it.
+  const colsForMetric = new Map<number, number[]>();
+  for (let c = dataStart; c < cols; c += 1) {
+    const mi = colMetric[c];
+    if (mi === undefined) continue;
+    const list = colsForMetric.get(mi) ?? [];
+    list.push(c);
+    colsForMetric.set(mi, list);
+  }
+
+  // Rows. The applicable mask is read from the greyed cells: a metric applies to
+  // a row when at least one of its cells in that row is NOT shaded grey. A sheet
+  // with no shading yields "all applicable" (the old behaviour).
   const rowKey = keyFactory();
   const rows: RowDef[] = [];
   const allMetricKeys = metrics.map((m) => m.key);
   let srCounter = 0;
+  let maskInferred = false;
   for (let r = bodyStart; r < region.length; r += 1) {
     const label = region[r][labelCol]?.text ?? '';
     if (label === '') continue;
@@ -220,21 +243,38 @@ function parseMatrix(region: Grid, twoHeaderRows: boolean): ReportImportResult {
     }
     srCounter += 1;
     const srFromSheet = srCol >= 0 ? region[r][srCol]?.numeric ?? null : null;
+
+    const applicable = metrics
+      .filter((_, mi) => {
+        const colsForThis = colsForMetric.get(mi) ?? [];
+        // Applicable when any of this metric's cells in the row is not greyed.
+        return colsForThis.some((c) => !(region[r][c]?.disabled ?? false));
+      })
+      .map((m) => m.key);
+    // A row shouldn't be entirely non-applicable; if shading says so, keep all.
+    const applicableMetrics = applicable.length > 0 ? applicable : [...allMetricKeys];
+    if (applicableMetrics.length < allMetricKeys.length) maskInferred = true;
+
     rows.push({
       key: rowKey(label, `row_${srCounter}`),
       label,
       srNo: srFromSheet ?? srCounter,
-      // The sheet is a blank template, so the real applicable mask cannot be
-      // inferred — default to all and let the admin trim (plan §23).
-      applicableMetrics: [...allMetricKeys],
+      applicableMetrics,
     });
   }
 
   if (rows.length > 0 && metrics.length > 0) {
-    warnings.push({
-      message:
-        'Every metric was marked applicable to every row — trim the greyed-cell mask per row where a metric does not apply.',
-    });
+    warnings.push(
+      maskInferred
+        ? {
+            message:
+              'The per-row applicable mask was inferred from the greyed cells in the sheet — verify each row before publishing.',
+          }
+        : {
+            message:
+              'No greyed cells were found, so every metric was marked applicable to every row — trim the mask per row where a metric does not apply.',
+          },
+    );
   }
 
   const schema: MatrixFieldSchema = {
@@ -337,6 +377,203 @@ export function colLetter(index: number): string {
   return `column ${s}`;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Table (repeating-row) detection + parsing                                  */
+/* -------------------------------------------------------------------------- */
+
+interface TableParams {
+  headerRows: number;
+  /** Leading dimension column indices (including a leading sr-no column). */
+  dimCols: number[];
+  dataStart: number;
+  /** Header row carrying column-group captions, or -1 when there is a single row. */
+  groupRow: number;
+  /** Header row carrying the per-column metric captions (just above the body). */
+  metricRow: number;
+}
+
+function hasAdjacentRepeats(row: GridCell[], start: number, end: number): boolean {
+  for (let c = start + 1; c < end; c += 1) {
+    if (row[c].text !== '' && row[c].text === row[c - 1].text) return true;
+  }
+  return false;
+}
+
+/**
+ * Detect a repeating-row *table*: several leading text/dimension columns, a
+ * (possibly multi-row) header with grouped metric captions, and a numeric body.
+ * Returns null when the sheet is not clearly a table so the matrix/simple
+ * heuristics handle it instead.
+ */
+function detectTable(region: Grid): TableParams | null {
+  const rows = region.length;
+  const cols = region[0]?.length ?? 0;
+  if (cols < 3 || rows < 3) return null;
+
+  // Leading rows that are mostly text are the header band (banner/group/metric).
+  let headerRows = 0;
+  for (let r = 0; r < rows; r += 1) {
+    if (textFraction(region[r]) >= 0.5) headerRows += 1;
+    else break;
+  }
+  if (headerRows < 1 || headerRows >= rows) return null;
+  headerRows = Math.min(headerRows, 4);
+  const bodyStart = headerRows;
+  const metricRow = headerRows - 1;
+  const groupRow = headerRows >= 2 ? headerRows - 2 : -1;
+
+  // Leading dimension columns: contiguous text columns from the left, plus a
+  // leading sr-no index column.
+  const dimCols: number[] = [];
+  for (let c = 0; c < cols; c += 1) {
+    const bodyCells = column(region, c).slice(bodyStart);
+    const tf = textFraction(bodyCells);
+    const isSrNo =
+      c === 0 &&
+      (SRNO_HEADER.test(region[metricRow][0]?.text ?? '') ||
+        (tf < 0.3 && bodyCells.some((x) => x.numeric !== null)));
+    if (tf >= 0.5 || isSrNo) dimCols.push(c);
+    else break;
+  }
+  if (dimCols.length === 0) return null;
+  const dataStart = dimCols[dimCols.length - 1] + 1;
+  if (dataStart >= cols) return null;
+
+  // A table needs >=2 *text* dimension columns (a single label column is a matrix).
+  const textDims = dimCols.filter((c) => {
+    if (c === 0 && SRNO_HEADER.test(region[metricRow][0]?.text ?? '')) return false;
+    return textFraction(column(region, c).slice(bodyStart)) >= 0.5;
+  });
+  if (textDims.length < 2) return null;
+
+  // The data block should be predominantly numeric.
+  let num = 0;
+  let tot = 0;
+  for (let r = bodyStart; r < rows; r += 1) {
+    for (let c = dataStart; c < cols; c += 1) {
+      const cell = region[r][c];
+      if (cell.text !== '') {
+        tot += 1;
+        if (cell.numeric !== null) num += 1;
+      }
+    }
+  }
+  if (tot === 0 || num / tot < 0.5) return null;
+
+  return { headerRows, dimCols, dataStart, groupRow, metricRow };
+}
+
+function headerLabelForColumn(region: Grid, c: number, metricRow: number): string {
+  for (let r = metricRow; r >= 0; r -= 1) {
+    const t = region[r][c]?.text;
+    if (t) return t;
+  }
+  return '';
+}
+
+function inferDimType(region: Grid, c: number, bodyStart: number, metricRow: number): SimpleFieldType {
+  const header = region[metricRow][c]?.text ?? '';
+  if (SRNO_HEADER.test(header)) return 'integer';
+  const nonEmpty = column(region, c)
+    .slice(bodyStart)
+    .filter((x) => x.text !== '');
+  if (nonEmpty.length === 0) return 'text';
+  const numeric = nonEmpty.filter((x) => x.numeric !== null);
+  if (numeric.length / nonEmpty.length >= 0.7) {
+    return numeric.every((x) => Number.isInteger(x.numeric as number)) ? 'integer' : 'number';
+  }
+  if (nonEmpty.filter((x) => /^\d{4}-\d{1,2}-\d{1,2}/.test(x.text)).length / nonEmpty.length >= 0.6) {
+    return 'date';
+  }
+  return 'text';
+}
+
+function parseTable(region: Grid, p: TableParams): ReportImportResult {
+  const cols = region[0].length;
+  const skipped: ImportNote[] = [];
+  const warnings: ImportNote[] = [];
+
+  // Dimension columns.
+  const dimKey = keyFactory();
+  const dimensions: TableDimensionColumn[] = p.dimCols.map((c, idx) => {
+    const label = headerLabelForColumn(region, c, p.metricRow) || `Column ${idx + 1}`;
+    return {
+      key: dimKey(label, `column_${idx + 1}`),
+      label,
+      type: inferDimType(region, c, p.headerRows, p.metricRow),
+    };
+  });
+
+  // Column groups + metrics from the data block.
+  const groupKey = keyFactory();
+  const metricKey = keyFactory();
+  const columnGroups: { key: string; label: string }[] = [];
+  const metrics: MetricDef[] = [];
+  const twoRow = p.groupRow >= 0 && hasAdjacentRepeats(region[p.groupRow], p.dataStart, cols);
+
+  if (twoRow) {
+    const groupRowCells = region[p.groupRow];
+    const metricRowCells = region[p.metricRow];
+    const gIndex = new Map<string, number>();
+    const mIndex = new Map<string, number>();
+    for (let c = p.dataStart; c < cols; c += 1) {
+      const g = groupRowCells[c].text || `Group ${columnGroups.length + 1}`;
+      const m = metricRowCells[c].text || `Metric ${metrics.length + 1}`;
+      if (groupRowCells[c].text === '' && metricRowCells[c].text === '') {
+        skipped.push({ message: 'Blank header column ignored', location: colLetter(c) });
+        continue;
+      }
+      if (!gIndex.has(g)) {
+        gIndex.set(g, columnGroups.length);
+        columnGroups.push({ key: groupKey(g, `group_${columnGroups.length + 1}`), label: g });
+      }
+      if (!mIndex.has(m)) {
+        mIndex.set(m, metrics.length);
+        metrics.push({ key: metricKey(m, `metric_${metrics.length + 1}`), label: m, type: 'integer' });
+      }
+    }
+  } else {
+    const headerRowCells = region[p.metricRow];
+    columnGroups.push({ key: groupKey('Data', 'group_1'), label: 'Data' });
+    for (let c = p.dataStart; c < cols; c += 1) {
+      const label = headerRowCells[c].text;
+      if (label === '') {
+        skipped.push({ message: 'Blank header column ignored', location: colLetter(c) });
+        continue;
+      }
+      metrics.push({ key: metricKey(label, `metric_${metrics.length + 1}`), label, type: 'integer' });
+    }
+  }
+
+  warnings.push({
+    message:
+      'Rows are open-ended — the lab adds one row per entry. Review the columns, metric labels and which columns should be required before publishing.',
+  });
+
+  const schema: TableFieldSchema = {
+    layout: 'table',
+    dimensions,
+    columnGroups,
+    metrics,
+    minRows: 0,
+    notes: [],
+  };
+
+  const summary: ImportSummary = {
+    sheetName: '',
+    detectedLayout: 'table',
+    confidence: twoRow && metrics.length > 0 ? 'high' : 'medium',
+    mapped: [
+      { label: 'Row columns', count: dimensions.length },
+      { label: 'Column groups', count: columnGroups.length },
+      { label: 'Metrics', count: metrics.length },
+    ],
+    skipped,
+    warnings,
+  };
+  return { schema, summary };
+}
+
 /**
  * Parse a normalized grid into a candidate report schema + summary. Assumes the
  * caller has already rejected a wholly-empty sheet; still tolerant of ragged
@@ -349,6 +586,11 @@ export function parseGridToReport(grid: Grid): ReportImportResult {
     // simple schema rather than throwing from a pure function.
     return parseSimple([[{ text: '', numeric: null }]]);
   }
+  // Prefer the repeating-row table shape when the sheet clearly is one (several
+  // leading dimension columns); otherwise fall back to matrix/simple.
+  const tableParams = detectTable(region);
+  if (tableParams) return parseTable(region, tableParams);
+
   const { layout, twoHeaderRows } = detectLayout(region);
   return layout === 'matrix' ? parseMatrix(region, twoHeaderRows) : parseSimple(region);
 }

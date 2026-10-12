@@ -11,6 +11,7 @@
 import {
   FieldSchema,
   isMatrixSchema,
+  isTableSchema,
   SelectOption,
   SimpleFieldType,
 } from './field-schema';
@@ -62,9 +63,51 @@ export interface MatrixRenderModel {
   notes?: string[];
 }
 
-export type RenderModel = SimpleRenderModel | MatrixRenderModel;
+/**
+ * `table` render model. Rows are open-ended (the lab adds them), so the model
+ * describes the **column structure** — the per-row dimension inputs and the
+ * grouped metric columns — and the renderer composes concrete per-row paths
+ * (`rows[i].dimensions.<key>` / `rows[i].cells.<group>.<metric>`).
+ */
+export interface RenderTableDimension {
+  key: string;
+  label: string;
+  type: SimpleFieldType;
+  required: boolean;
+  options?: SelectOption[];
+  helpText?: string;
+}
+
+export interface TableRenderModel {
+  layout: 'table';
+  dimensions: RenderTableDimension[];
+  columnGroups: { key: string; label: string }[];
+  metrics: { key: string; label: string }[];
+  minRows: number;
+  notes?: string[];
+}
+
+export type RenderModel = SimpleRenderModel | MatrixRenderModel | TableRenderModel;
 
 export function buildRenderModel(schema: FieldSchema): RenderModel {
+  if (isTableSchema(schema)) {
+    return {
+      layout: 'table',
+      dimensions: schema.dimensions.map((d) => ({
+        key: d.key,
+        label: d.label,
+        type: d.type,
+        required: d.required ?? false,
+        options: d.options,
+        helpText: d.helpText,
+      })),
+      columnGroups: schema.columnGroups.map((g) => ({ key: g.key, label: g.label })),
+      metrics: schema.metrics.map((m) => ({ key: m.key, label: m.label })),
+      minRows: schema.minRows ?? 0,
+      notes: schema.notes,
+    };
+  }
+
   if (isMatrixSchema(schema)) {
     return {
       layout: 'matrix',

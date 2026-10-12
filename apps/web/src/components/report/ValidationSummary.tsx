@@ -46,6 +46,10 @@ function buildLookup(model: RenderModel | null): Map<string, { label: string; gr
     return lookup;
   }
 
+  // table rows are per-index and dynamic, so issues are parsed from the path
+  // directly in buildTableIssues rather than pre-enumerated here.
+  if (model.layout === 'table') return lookup;
+
   // matrix: error path is "<rowKey>.<groupKey>.<metricKey>" (no "rows." prefix).
   const metricLabel = new Map(model.metrics.map((m) => [m.key, m.label]));
   for (const row of model.rows) {
@@ -61,7 +65,44 @@ function buildLookup(model: RenderModel | null): Map<string, { label: string; gr
   return lookup;
 }
 
+/** Table issues: parse the row-indexed paths into readable labels. */
+function buildTableIssues(
+  model: Extract<RenderModel, { layout: 'table' }>,
+  errors: Record<string, string>,
+): Issue[] {
+  const dimLabel = new Map(model.dimensions.map((d) => [d.key, d.label]));
+  const groupLabel = new Map(model.columnGroups.map((g) => [g.key, g.label]));
+  const metricLabel = new Map(model.metrics.map((m) => [m.key, m.label]));
+  const issues: Issue[] = [];
+
+  for (const [path, message] of Object.entries(errors)) {
+    const dim = /^rows\[(\d+)\]\.dimensions\.(.+)$/.exec(path);
+    if (dim) {
+      issues.push({
+        path,
+        message,
+        label: dimLabel.get(dim[2]) ?? dim[2],
+        group: `Row ${Number(dim[1]) + 1}`,
+      });
+      continue;
+    }
+    const cell = /^rows\[(\d+)\]\.cells\.([^.]+)\.(.+)$/.exec(path);
+    if (cell) {
+      issues.push({
+        path,
+        message,
+        label: `${groupLabel.get(cell[2]) ?? cell[2]} · ${metricLabel.get(cell[3]) ?? cell[3]}`,
+        group: `Row ${Number(cell[1]) + 1}`,
+      });
+      continue;
+    }
+    issues.push({ path, message, label: path, group: 'Table' });
+  }
+  return issues;
+}
+
 function buildIssues(model: RenderModel | null, errors: Record<string, string>): Issue[] {
+  if (model?.layout === 'table') return buildTableIssues(model, errors);
   const lookup = buildLookup(model);
   const errorPaths = new Set(Object.keys(errors));
   const issues: Issue[] = [];

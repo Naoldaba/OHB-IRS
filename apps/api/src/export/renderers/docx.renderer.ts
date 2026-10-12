@@ -21,7 +21,7 @@ import {
   VerticalAlign,
   WidthType,
 } from 'docx';
-import type { ExportDocModel, KeyValueBlock, MatrixBlock } from '../export-model';
+import type { ExportDocModel, KeyValueBlock, MatrixBlock, TableBlock } from '../export-model';
 
 const NAVY = '1F3A5F';
 const WHITE = 'FFFFFF';
@@ -61,8 +61,10 @@ export async function renderDocx(doc: ExportDocModel): Promise<Buffer> {
   for (const block of doc.blocks) {
     if (block.kind === 'keyval') {
       children.push(...keyvalBlock(block));
-    } else {
+    } else if (block.kind === 'matrix') {
       children.push(...matrixBlock(block));
+    } else {
+      children.push(...tableBlock(block));
     }
     children.push(spacer());
   }
@@ -227,6 +229,89 @@ function matrixBlock(block: MatrixBlock): (Paragraph | Table)[] {
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [new TextRun({ text: cell.enabled ? cell.value || '—' : '' })],
+              }),
+            ],
+          }),
+        );
+      }
+    }
+    rows.push(new TableRow({ children: cells }));
+  }
+
+  const out: (Paragraph | Table)[] = [
+    new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows }),
+  ];
+  if (block.notes && block.notes.length > 0) {
+    for (const note of block.notes) {
+      out.push(
+        new Paragraph({ children: [new TextRun({ text: note, italics: true, size: 18, color: MUTED })] }),
+      );
+    }
+  }
+  return out;
+}
+
+function tableBlock(block: TableBlock): (Paragraph | Table)[] {
+  const metricsPerGroup = block.metrics.length;
+  const rows: TableRow[] = [];
+
+  // Header row 1: dimension headers (merged down two rows) + group labels.
+  const headRow1: TableCell[] = block.dimensions.map(
+    (dim) =>
+      new TableCell({
+        rowSpan: 2,
+        borders: CELL_BORDER,
+        shading: { type: ShadingType.CLEAR, fill: NAVY, color: 'auto' },
+        verticalAlign: VerticalAlign.CENTER,
+        children: [headText(dim.label)],
+      }),
+  );
+  for (const group of block.columnGroups) {
+    headRow1.push(
+      new TableCell({
+        columnSpan: metricsPerGroup,
+        borders: CELL_BORDER,
+        shading: { type: ShadingType.CLEAR, fill: NAVY, color: 'auto' },
+        children: [headText(group.label)],
+      }),
+    );
+  }
+  rows.push(new TableRow({ tableHeader: true, children: headRow1 }));
+
+  // Header row 2: metric labels under each group (dimension cells already spanned).
+  const headRow2: TableCell[] = [];
+  for (let g = 0; g < block.columnGroups.length; g += 1) {
+    for (const metric of block.metrics) {
+      headRow2.push(
+        new TableCell({
+          borders: CELL_BORDER,
+          shading: { type: ShadingType.CLEAR, fill: NAVY, color: 'auto' },
+          children: [headText(metric.label)],
+        }),
+      );
+    }
+  }
+  rows.push(new TableRow({ tableHeader: true, children: headRow2 }));
+
+  // Body.
+  for (const row of block.rows) {
+    const cells: TableCell[] = row.dimensions.map(
+      (dimVal) =>
+        new TableCell({
+          borders: CELL_BORDER,
+          shading: { type: ShadingType.CLEAR, fill: GROUP_BG, color: 'auto' },
+          children: [new Paragraph({ children: [new TextRun({ text: dimVal || '—', color: '334155' })] })],
+        }),
+    );
+    for (const groupCells of row.cells) {
+      for (const cell of groupCells) {
+        cells.push(
+          new TableCell({
+            borders: CELL_BORDER,
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [new TextRun({ text: cell || '—' })],
               }),
             ],
           }),

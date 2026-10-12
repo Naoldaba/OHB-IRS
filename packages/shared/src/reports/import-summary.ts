@@ -38,6 +38,26 @@ export interface ImportSummary {
   skipped: ImportNote[];
   /** Assumptions the admin must verify (types defaulted, mask set to all, …). */
   warnings: ImportNote[];
+  /**
+   * True when an LLM refinement pass (Phase 29) ran *after* the heuristic parse.
+   * The model only ever sees the structure/label layer (header text, field and
+   * metric labels, the candidate schema) — **never any report data value** — and
+   * its output is still a draft: the admin reviews it and the authoritative
+   * {@link validateFieldSchema} + publish gate remain the only authority.
+   */
+  aiAssisted?: boolean;
+  /**
+   * What the AI improved over the heuristic result (a changed field type, added
+   * select options, a trimmed applicable mask, a clearer label). Surfaced so the
+   * admin can verify each AI change rather than hunt for it. Absent/empty when AI
+   * did not run or changed nothing.
+   */
+  aiSuggestions?: ImportNote[];
+  /**
+   * Caveats the AI raised about its own mapping (things it was unsure of, or that
+   * still need a human decision). Advisory only.
+   */
+  aiNotes?: ImportNote[];
 }
 
 /** What the import endpoint returns: a candidate schema + its summary. */

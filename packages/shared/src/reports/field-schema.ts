@@ -13,7 +13,7 @@
  * shared validator (authority) and the render model the UI consumes.
  */
 
-import { MatrixStructure } from './matrix-types';
+import { ColumnGroupDef, MatrixStructure, MetricDef } from './matrix-types';
 
 export type SimpleFieldType = 'number' | 'integer' | 'text' | 'date' | 'select';
 
@@ -52,7 +52,45 @@ export interface MatrixFieldSchema extends MatrixStructure {
   layout: 'matrix';
 }
 
-export type FieldSchema = SimpleFieldSchema | MatrixFieldSchema;
+/**
+ * A per-row input column of a `table` report (e.g. Zone, Woreda, Referring
+ * facility, agreement type). Reuses the simple field types so a dimension can be
+ * text, a number/date, or a dropdown.
+ */
+export interface TableDimensionColumn {
+  key: string;
+  label: string;
+  type: SimpleFieldType;
+  /** Required in every row at submit (drafts never enforce required). */
+  required?: boolean;
+  /** Allowed options for `select` dimensions. */
+  options?: SelectOption[];
+  helpText?: string;
+}
+
+/**
+ * `table` — a repeating-row data table: a set of per-row **dimension** input
+ * columns, plus grouped numeric **metric** columns (each column group repeats
+ * the metric set, as in a matrix). Unlike `matrix`, the rows are **open-ended** —
+ * the lab adds one row per entry (e.g. one per referring facility) rather than a
+ * fixed named set. Every metric applies to every cell; conditional applicability
+ * (e.g. postal vs alternative) is expressed as a configurable business rule, not
+ * a static mask.
+ */
+export interface TableFieldSchema {
+  layout: 'table';
+  /** Per-row input columns. At least one is required. */
+  dimensions: TableDimensionColumn[];
+  /** Grouped metric columns (reuses the matrix column-group / metric contract). */
+  columnGroups: ColumnGroupDef[];
+  metrics: MetricDef[];
+  /** Minimum number of rows required at submit (default 0 — rows are optional). */
+  minRows?: number;
+  /** Optional free-text notes surfaced in the UI. */
+  notes?: string[];
+}
+
+export type FieldSchema = SimpleFieldSchema | MatrixFieldSchema | TableFieldSchema;
 
 /** Narrowing helpers (also usable after a jsonb round-trip). */
 export function isSimpleSchema(schema: FieldSchema): schema is SimpleFieldSchema {
@@ -61,4 +99,8 @@ export function isSimpleSchema(schema: FieldSchema): schema is SimpleFieldSchema
 
 export function isMatrixSchema(schema: FieldSchema): schema is MatrixFieldSchema {
   return schema.layout === 'matrix';
+}
+
+export function isTableSchema(schema: FieldSchema): schema is TableFieldSchema {
+  return schema.layout === 'table';
 }

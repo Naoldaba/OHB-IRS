@@ -12,6 +12,7 @@ import {
   type MatrixFieldSchema,
   type ReportImportResult,
   type SimpleFieldSchema,
+  type TableFieldSchema,
 } from '@ohb/shared';
 import { api, ApiError } from '@/lib/api';
 import type { DefinitionVersion } from '@/lib/types';
@@ -27,12 +28,22 @@ import {
 import { ReportRenderer } from '@/components/report/ReportRenderer';
 import { MatrixBuilder } from '@/components/builder/MatrixBuilder';
 import { SimpleBuilder } from '@/components/builder/SimpleBuilder';
+import { TableBuilder } from '@/components/builder/TableBuilder';
 import { RuleBuilder } from '@/components/builder/RuleBuilder';
 import {
   emptyMatrixSchema,
   emptySimpleSchema,
+  emptyTableSchema,
   hivViralLoadTemplate,
 } from '@/components/builder/schema-helpers';
+
+type BuilderLayout = 'simple' | 'matrix' | 'table';
+
+function emptySchemaFor(layout: BuilderLayout): FieldSchema {
+  if (layout === 'matrix') return emptyMatrixSchema();
+  if (layout === 'table') return emptyTableSchema();
+  return emptySimpleSchema();
+}
 
 export default function BuilderPage() {
   const { id, versionId } = useParams<{ id: string; versionId: string }>();
@@ -46,6 +57,8 @@ export default function BuilderPage() {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<'structure' | 'rules'>('structure');
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
+  const [aiAvailable, setAiAvailable] = useState(false);
+  const [useAi, setUseAi] = useState(false);
   const reimportInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -60,6 +73,14 @@ export default function BuilderPage() {
   useEffect(() => {
     load().catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'));
   }, [load]);
+
+  // Only offer the "Assist with AI" toggle when a provider is configured server-side.
+  useEffect(() => {
+    api
+      .get<{ aiAvailable: boolean }>('/report-import/capabilities')
+      .then((c) => setAiAvailable(Boolean(c.aiAvailable)))
+      .catch(() => setAiAvailable(false));
+  }, []);
 
   const readOnly = version?.status !== ReportDefinitionStatus.DRAFT;
 
@@ -79,7 +100,7 @@ export default function BuilderPage() {
    * best-effort: it drops the result into the normal builder (as an unsaved
    * draft) with a summary of what to review — it never publishes on its own.
    */
-  async function onImport(file: File) {
+  async function onImport(file: File, assist: boolean) {
     // Importing over an existing structure is destructive — confirm first. (A
     // fresh draft has no schema yet, so this only prompts on a started draft.)
     if (schemaHasContent(schema)) {
@@ -94,7 +115,8 @@ export default function BuilderPage() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const result = await api.upload<ReportImportResult>('/report-import/parse', form);
+      const path = assist ? '/report-import/parse?assist=ai' : '/report-import/parse';
+      const result = await api.upload<ReportImportResult>(path, form);
       setSchema(result.schema);
       setImportSummary(result.summary);
       setDirty(true);
@@ -227,14 +249,21 @@ export default function BuilderPage() {
         <LayoutChooser
           disabled={readOnly}
           busy={busy}
-          onChoose={(layout) =>
-            update(layout === 'matrix' ? emptyMatrixSchema() : emptySimpleSchema())
-          }
+          onChoose={(layout) => update(emptySchemaFor(layout))}
           onHivTemplate={() => update(hivViralLoadTemplate())}
           onImport={onImport}
+          aiAvailable={aiAvailable}
+          useAi={useAi}
+          onToggleAi={setUseAi}
         />
       ) : tab === 'rules' ? (
-        dirty ? (
+        schema.layout === 'table' ? (
+          <Callout title="Business rules aren’t available for data tables yet">
+            Data-table reports have open-ended rows, so field-level business rules are a
+            later enhancement. Structure validation (dimension types, required columns and
+            metric cells) is still enforced on submit.
+          </Callout>
+        ) : dirty ? (
           <Callout title="Save your structure first">
             You have unsaved structure changes. Save them before authoring rules so
             the field catalog stays in sync.
@@ -257,7 +286,12 @@ export default function BuilderPage() {
             )}
             <div className="toolbar" style={{ marginBottom: 12 }}>
               <span className="micro-label">
-                Layout: {schema.layout === 'matrix' ? 'Matrix grid' : 'Simple sections'}
+                Layout:{' '}
+                {schema.layout === 'matrix'
+                  ? 'Matrix grid'
+                  : schema.layout === 'table'
+                    ? 'Data table'
+                    : 'Simple sections'}
               </span>
               {dirty && <span className="pill pill--amber">unsaved changes</span>}
               {!readOnly && (
@@ -269,20 +303,36 @@ export default function BuilderPage() {
                     style={{ display: 'none' }}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) onImport(file);
+                      if (file) onImport(file, useAi);
                       e.target.value = '';
                     }}
                   />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    style={{ marginLeft: 'auto' }}
-                    onClick={() => reimportInput.current?.click()}
-                    disabled={busy}
-                    title="Replace this draft's structure from an Excel file"
-                  >
-                    <FileSpreadsheet size={15} /> {busy ? 'Importing…' : 'Import from Excel'}
-                  </Button>
+                  <div className="toolbar" style={{ marginLeft: 'auto', gap: 10 }}>
+                    {aiAvailable && (
+                      <label
+                        className="micro-label"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                        title="Let the configured AI refine field types, options and the mask (structure only — no report data is sent)"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={useAi}
+                          onChange={(e) => setUseAi(e.target.checked)}
+                          disabled={busy}
+                        />
+                        Assist with AI
+                      </label>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => reimportInput.current?.click()}
+                      disabled={busy}
+                      title="Replace this draft's structure from an Excel file"
+                    >
+                      <FileSpreadsheet size={15} /> {busy ? 'Importing…' : 'Import from Excel'}
+                    </Button>
+                  </div>
                 </>
               )}
             </div>
@@ -290,6 +340,12 @@ export default function BuilderPage() {
             {schema.layout === 'matrix' ? (
               <MatrixBuilder
                 schema={schema as MatrixFieldSchema}
+                readOnly={readOnly}
+                onChange={(s) => update(s)}
+              />
+            ) : schema.layout === 'table' ? (
+              <TableBuilder
+                schema={schema as TableFieldSchema}
                 readOnly={readOnly}
                 onChange={(s) => update(s)}
               />
@@ -329,20 +385,27 @@ function LayoutChooser({
   onChoose,
   onHivTemplate,
   onImport,
+  aiAvailable,
+  useAi,
+  onToggleAi,
 }: {
   disabled: boolean;
   busy: boolean;
-  onChoose: (layout: 'simple' | 'matrix') => void;
+  onChoose: (layout: BuilderLayout) => void;
   onHivTemplate: () => void;
-  onImport: (file: File) => void;
+  onImport: (file: File, assist: boolean) => void;
+  aiAvailable: boolean;
+  useAi: boolean;
+  onToggleAi: (v: boolean) => void;
 }) {
-  const [layout, setLayout] = useState<'simple' | 'matrix'>('matrix');
+  const [layout, setLayout] = useState<BuilderLayout>('matrix');
   const fileInput = useRef<HTMLInputElement>(null);
   return (
     <Card title="Choose a layout" desc="Pick the structure that matches the source report, or import it from an Excel file.">
       <SegmentedToggle
         options={[
           { value: 'matrix', label: 'Matrix grid' },
+          { value: 'table', label: 'Data table' },
           { value: 'simple', label: 'Simple sections' },
         ]}
         value={layout}
@@ -355,8 +418,18 @@ function LayoutChooser({
           <div>
             <div className="callout__title">Matrix grid</div>
             <div className="callout__body">
-              Rows (tests/indicators) × column groups × metrics, with a per-row
-              applicable mask (greyed cells). Used by HIV Viral Load.
+              A <strong>fixed</strong> set of rows (tests/indicators) × column groups ×
+              metrics, with a per-row applicable mask (greyed cells). Used by HIV Viral Load.
+            </div>
+          </div>
+        </div>
+        <div className="callout">
+          <Grid3x3 className="callout__icon" size={18} />
+          <div>
+            <div className="callout__title">Data table</div>
+            <div className="callout__body">
+              <strong>Open-ended rows</strong> the lab adds one at a time (e.g. one per
+              facility): per-row input columns (Zone, Woreda, …) plus grouped metric columns.
             </div>
           </div>
         </div>
@@ -373,7 +446,8 @@ function LayoutChooser({
       </div>
       <div className="toolbar" style={{ marginTop: 18 }}>
         <Button onClick={() => onChoose(layout)} disabled={disabled || busy}>
-          Start with {layout === 'matrix' ? 'a matrix' : 'simple sections'}
+          Start with{' '}
+          {layout === 'matrix' ? 'a matrix' : layout === 'table' ? 'a data table' : 'simple sections'}
         </Button>
         <Button variant="secondary" onClick={onHivTemplate} disabled={disabled || busy}>
           Prefill HIV Viral Load template
@@ -394,17 +468,39 @@ function LayoutChooser({
           style={{ display: 'none' }}
           onChange={(e) => {
             const file = e.target.files?.[0];
-            if (file) onImport(file);
+            if (file) onImport(file, useAi);
             e.target.value = '';
           }}
         />
-        <Button
-          variant="secondary"
-          onClick={() => fileInput.current?.click()}
-          disabled={disabled || busy}
-        >
-          <FileSpreadsheet size={16} /> {busy ? 'Importing…' : 'Import from Excel'}
-        </Button>
+        <div className="toolbar" style={{ gap: 12 }}>
+          <Button
+            variant="secondary"
+            onClick={() => fileInput.current?.click()}
+            disabled={disabled || busy}
+          >
+            <FileSpreadsheet size={16} /> {busy ? 'Importing…' : 'Import from Excel'}
+          </Button>
+          {aiAvailable && (
+            <label
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 }}
+              title="Let the configured AI refine field types, dropdown options and the applicable mask. Only the report's structure and labels are sent — never any report data."
+            >
+              <input
+                type="checkbox"
+                checked={useAi}
+                onChange={(e) => onToggleAi(e.target.checked)}
+                disabled={disabled || busy}
+              />
+              Assist with AI
+            </label>
+          )}
+        </div>
+        {aiAvailable && useAi && (
+          <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', fontSize: 12 }}>
+            AI refines structure and labels only — no report data is sent. Every suggestion is
+            shown for you to review, and nothing is published automatically.
+          </p>
+        )}
       </div>
     </Card>
   );
@@ -425,7 +521,34 @@ function ImportSummaryCallout({ summary }: { summary: ImportSummary }) {
       <p style={{ margin: '2px 0' }}>
         Mapped {mapped || 'nothing'}. Review the structure below and correct anything the
         importer got wrong before publishing.
+        {summary.aiAssisted ? ' AI assist refined the structure — verify its suggestions below.' : ''}
       </p>
+      {summary.aiSuggestions && summary.aiSuggestions.length > 0 && (
+        <>
+          <div className="micro-label" style={{ marginTop: 8 }}>AI suggestions — please verify</div>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {summary.aiSuggestions.map((s, i) => (
+              <li key={i}>
+                {s.message}
+                {s.location ? ` (${s.location})` : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {summary.aiNotes && summary.aiNotes.length > 0 && (
+        <>
+          <div className="micro-label" style={{ marginTop: 8 }}>AI notes</div>
+          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
+            {summary.aiNotes.map((n, i) => (
+              <li key={i}>
+                {n.message}
+                {n.location ? ` (${n.location})` : ''}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {summary.warnings.length > 0 && (
         <>
           <div className="micro-label" style={{ marginTop: 8 }}>Please review</div>
@@ -486,6 +609,11 @@ function schemaHasContent(schema: FieldSchema | null): boolean {
   if (!schema) return false;
   if (schema.layout === 'matrix') {
     return schema.rows.length > 0 || schema.metrics.length > 0 || schema.columnGroups.length > 0;
+  }
+  if (schema.layout === 'table') {
+    return (
+      schema.dimensions.length > 0 || schema.metrics.length > 0 || schema.columnGroups.length > 0
+    );
   }
   return schema.sections.some((s) => s.fields.length > 0);
 }
