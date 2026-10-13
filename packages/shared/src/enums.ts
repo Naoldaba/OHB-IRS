@@ -10,6 +10,18 @@ export enum RoleName {
 }
 
 /**
+ * The data boundary a role grants (Phase 28b) — independent of its capabilities.
+ * BUREAU sees across all laboratories (and uses the admin portal); LAB is
+ * confined to the user's own `laboratoryId` (and uses the lab portal). Custom
+ * roles pick a scope at creation; the two system roles keep BUREAU / LAB.
+ * Persisted on `Role.scope`; keep the string values stable.
+ */
+export enum RoleScope {
+  BUREAU = 'BUREAU',
+  LAB = 'LAB',
+}
+
+/**
  * Report lifecycle as defined in CLAUDE.md. Do not add states without a
  * feature that requires them.
  *
@@ -75,24 +87,73 @@ export enum RuleTemplateScope {
   CATEGORY = 'CATEGORY',
 }
 
+/**
+ * In-app notification events (Phase 9). Each notification is addressed to a
+ * single recipient. Delivery is in-app only for now; email is a later channel.
+ * Keep the string values stable — they are persisted in the database.
+ */
+export enum NotificationType {
+  // → Bureau admins, when a laboratory sends a report in.
+  REPORT_SUBMITTED = 'REPORT_SUBMITTED',
+  REPORT_RESUBMITTED = 'REPORT_RESUBMITTED',
+  // → the owning laboratory, as a review progresses.
+  REPORT_UNDER_REVIEW = 'REPORT_UNDER_REVIEW',
+  REVISION_REQUIRED = 'REVISION_REQUIRED',
+  REPORT_APPROVED = 'REPORT_APPROVED',
+  // → the other party in a feedback thread.
+  FEEDBACK_RECEIVED = 'FEEDBACK_RECEIVED',
+  // → a user @mentioned in a feedback message (Phase 24); only ever sent to
+  //   someone authorized to see the submission.
+  MENTIONED = 'MENTIONED',
+  // → the owning laboratory, from the scheduled reminder sweep (Phase 17), for
+  //   an expected-but-unsubmitted report as its due date nears or once it passes.
+  DEADLINE_APPROACHING = 'DEADLINE_APPROACHING',
+  REPORT_OVERDUE = 'REPORT_OVERDUE',
+}
+
 /** High-level audit action catalogue. Extend as features are added. */
 export enum AuditAction {
   LOGIN = 'LOGIN',
   LOGOUT = 'LOGOUT',
+  PASSWORD_RESET_REQUESTED = 'PASSWORD_RESET_REQUESTED',
+  PASSWORD_RESET_COMPLETED = 'PASSWORD_RESET_COMPLETED',
+  TWO_FACTOR_ENABLED = 'TWO_FACTOR_ENABLED',
+  TWO_FACTOR_DISABLED = 'TWO_FACTOR_DISABLED',
+  TWO_FACTOR_RECOVERY_USED = 'TWO_FACTOR_RECOVERY_USED',
+  TWO_FACTOR_RECOVERY_REGENERATED = 'TWO_FACTOR_RECOVERY_REGENERATED',
+  TWO_FACTOR_RESET = 'TWO_FACTOR_RESET',
   LAB_CREATED = 'LAB_CREATED',
   LAB_UPDATED = 'LAB_UPDATED',
+  CATEGORY_CREATED = 'CATEGORY_CREATED',
+  CATEGORY_UPDATED = 'CATEGORY_UPDATED',
+  CATEGORY_DELETED = 'CATEGORY_DELETED',
+  PERIOD_CREATED = 'PERIOD_CREATED',
+  PERIOD_UPDATED = 'PERIOD_UPDATED',
+  PERIOD_DELETED = 'PERIOD_DELETED',
   USER_CREATED = 'USER_CREATED',
   USER_UPDATED = 'USER_UPDATED',
+  ROLE_ASSIGNED = 'ROLE_ASSIGNED',
+  ROLE_PERMISSIONS_UPDATED = 'ROLE_PERMISSIONS_UPDATED',
+  ROLE_CREATED = 'ROLE_CREATED',
+  ROLE_UPDATED = 'ROLE_UPDATED',
+  ROLE_DELETED = 'ROLE_DELETED',
   REPORT_CREATED = 'REPORT_CREATED',
   REPORT_UPDATED = 'REPORT_UPDATED',
   REPORT_SUBMITTED = 'REPORT_SUBMITTED',
   REPORT_REVIEW_STARTED = 'REPORT_REVIEW_STARTED',
   REPORT_FEEDBACK_ADDED = 'REPORT_FEEDBACK_ADDED',
+  REPORT_FEEDBACK_RESOLVED = 'REPORT_FEEDBACK_RESOLVED',
+  REPORT_FEEDBACK_REOPENED = 'REPORT_FEEDBACK_REOPENED',
   REPORT_REVISION_REQUESTED = 'REPORT_REVISION_REQUESTED',
   REPORT_RESUBMITTED = 'REPORT_RESUBMITTED',
   REPORT_APPROVED = 'REPORT_APPROVED',
+  REPORT_SIGNED_OFF = 'REPORT_SIGNED_OFF',
+  REPORT_EXPORTED = 'REPORT_EXPORTED',
+  REPORT_ATTACHMENT_ADDED = 'REPORT_ATTACHMENT_ADDED',
+  REPORT_ATTACHMENT_REMOVED = 'REPORT_ATTACHMENT_REMOVED',
   DEFINITION_VERSION_CREATED = 'DEFINITION_VERSION_CREATED',
   DEFINITION_VERSION_PUBLISHED = 'DEFINITION_VERSION_PUBLISHED',
+  REPORT_DEFINITION_IMPORTED = 'REPORT_DEFINITION_IMPORTED',
   RULE_CREATED = 'RULE_CREATED',
   RULE_UPDATED = 'RULE_UPDATED',
   RULE_DELETED = 'RULE_DELETED',

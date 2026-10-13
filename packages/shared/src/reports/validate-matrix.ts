@@ -8,7 +8,7 @@
 
 import {
   MatrixReportData,
-  MatrixReportDefinition,
+  MatrixStructure,
 } from './matrix-types';
 
 export interface ValidationError {
@@ -36,7 +36,7 @@ function isNonNegativeInteger(value: unknown): value is number {
 }
 
 export function validateMatrixReportData(
-  def: MatrixReportDefinition,
+  def: MatrixStructure,
   data: unknown,
   options: ValidateOptions,
 ): ValidationResult {
@@ -97,7 +97,7 @@ export function validateMatrixReportData(
 }
 
 /** Empty data skeleton (all applicable cells null) for a new draft. */
-export function emptyMatrixData(def: MatrixReportDefinition): MatrixReportData {
+export function emptyMatrixData(def: MatrixStructure): MatrixReportData {
   const data: MatrixReportData = { rows: {} };
   for (const row of def.rows) {
     const applicable = new Set(row.applicableMetrics);

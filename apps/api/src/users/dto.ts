@@ -1,13 +1,11 @@
 import {
   IsBoolean,
   IsEmail,
-  IsEnum,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { RoleName } from '@ohb/shared';
 
 export class CreateUserDto {
   @IsEmail()
@@ -23,12 +21,13 @@ export class CreateUserDto {
   @MaxLength(100)
   password: string;
 
-  @IsEnum(RoleName)
-  role: RoleName;
+  /** A role name (system or custom). The service resolves it and its scope. */
+  @IsString()
+  role: string;
 
   /**
-   * Required for REGIONAL_LAB_HEAD, forbidden for BUREAU_ADMIN.
-   * Enforced in the service against the chosen role.
+   * Required for a LAB-scoped role, forbidden for a BUREAU-scoped role.
+   * Enforced in the service against the chosen role's scope.
    */
   @IsOptional()
   @IsString()
@@ -49,8 +48,8 @@ export class UpdateUserDto {
   password?: string;
 
   @IsOptional()
-  @IsEnum(RoleName)
-  role?: RoleName;
+  @IsString()
+  role?: string;
 
   @IsOptional()
   @IsString()

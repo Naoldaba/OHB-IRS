@@ -13,10 +13,29 @@ datasource db {
 }
 
 model Role {
-  id          String  @id @default(cuid())
-  name        String  @unique // RoleName enum value
+  id          String           @id @default(cuid())
+  name        String           @unique // RoleName value for system roles; free text for custom roles
   description String?
+  // Data boundary (Phase 28b): RoleScope value (BUREAU | LAB).
+  scope       String           @default("LAB")
+  // System roles (the two seeded roles) cannot be renamed, rescoped or deleted.
+  isSystem    Boolean          @default(false)
+  isActive    Boolean          @default(true)
   users       User[]
+  permissions RolePermission[]
+}
+
+// Editable role → capability grants (Phase 28). The capability `key` is a
+// code-backed whitelist value from `@ohb/shared` (CAPABILITIES); only the grant
+// is data. Live authorization reads these rows, so editing them changes access.
+model RolePermission {
+  id            String @id @default(cuid())
+  roleId        String
+  capabilityKey String
+  role          Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, capabilityKey])
+  @@index([roleId])
 }
 
 model Laboratory {
@@ -24,6 +43,11 @@ model Laboratory {
   name        String             @unique
   code        String             @unique
   isActive    Boolean            @default(true)
+  // Admin-managed geographic position for the compliance map (Phase 21). Both
+  // null until an admin sets them; a lab without coordinates is listed but not
+  // plotted. Never hard-coded in application logic (CLAUDE.md no-hard-coded-labs).
+  latitude    Float?
+  longitude   Float?
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
   users       User[]
@@ -40,8 +64,35 @@ model User {
   role         Role        @relation(fields: [roleId], references: [id])
   laboratoryId String?
   laboratory   Laboratory? @relation(fields: [laboratoryId], references: [id])
+  // Public URL of the user's profile picture (local-disk in dev, cloud in prod);
+  // null when none is set. See the storage provider abstraction.
+  avatarUrl    String?
   isActive     Boolean     @default(true)
+  // Self-service preference: when true (the default) the user also receives
+  // their in-app notifications by email. In-app delivery is unaffected by this.
+  emailNotifications Boolean @default(true)
+  // Set when an admin creates the account or resets the password; forces a
+  // self-service change at next login before any other action is permitted.
+  mustChangePassword Boolean @default(false)
+  // --- TOTP two-step verification (opt-in, all roles) ---
+  // twoFactorEnabled flips true only after a setup code is confirmed. While
+  // enabled, twoFactorSecret holds the confirmed base32 TOTP secret;
+  // twoFactorPendingSecret holds an in-progress enrollment secret not yet
+  // confirmed (cleared on enable/cancel). Both secrets are null when 2FA is off.
+  twoFactorEnabled       Boolean   @default(false)
+  twoFactorSecret        String?
+  twoFactorPendingSecret String?
+  twoFactorEnabledAt     DateTime?
   lastLoginAt  DateTime?
+  // --- Online presence (heartbeat) ---
+  // lastSeenAt is refreshed (throttled) by the session guard on authenticated
+  // traffic; it is recorded regardless of the privacy preference below. A user
+  // counts as "online" only when seen within the presence window AND they have
+  // not hidden their status. showOnlineStatus is a self-service privacy toggle:
+  // when false the user never appears online to anyone (derivation is
+  // server-authoritative). See common/presence.ts.
+  lastSeenAt        DateTime?
+  showOnlineStatus  Boolean   @default(true)
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
@@ -50,22 +101,70 @@ model User {
   reviewedSubmissions  ReportSubmission[]   @relation("submissionReviewedBy")
   submittedVersions    SubmissionVersion[]  @relation("versionSubmittedBy")
   feedbacks            Feedback[]           @relation("feedbackAuthor")
+  resolvedFeedbacks    Feedback[]           @relation("feedbackResolvedBy")
+  feedbackMentions     FeedbackMention[]    @relation("feedbackMentionedUser")
   attachments          Attachment[]         @relation("attachmentUploadedBy")
+  signOffs             ReportSignOff[]      @relation("signOffSignedBy")
   auditLogs            AuditLog[]           @relation("auditActor")
   createdDefinitionVersions   ReportDefinitionVersion[] @relation("defVersionCreatedBy")
   publishedDefinitionVersions ReportDefinitionVersion[] @relation("defVersionPublishedBy")
+  notifications          Notification[] @relation("notificationRecipient")
+  triggeredNotifications Notification[] @relation("notificationActor")
+  passwordResetTokens    PasswordResetToken[] @relation("resetTokenUser")
+  twoFactorRecoveryCodes TwoFactorRecoveryCode[] @relation("recoveryCodeUser")
 
   @@index([roleId])
   @@index([laboratoryId])
 }
 
+/// A single-use, time-limited password-reset grant. Only the SHA-256 hash of the
+/// token is stored, never the token itself, so a database read cannot be used to
+/// reset a password. Consumed (usedAt set) on a successful reset; expired/used
+/// rows are harmless and cleaned up opportunistically. Requesting a new reset
+/// invalidates the user's earlier outstanding tokens.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation("resetTokenUser", fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 hex of the opaque token sent in the email link.
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// Single-use recovery (backup) codes for 2FA, generated at enrollment and shown
+// to the user once. Only the SHA-256 hash of each code is stored. A code is
+// consumed (usedAt set) the first time it is accepted at the login challenge.
+model TwoFactorRecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation("recoveryCodeUser", fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @unique
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
 model ReportCategory {
-  id            String         @id @default(cuid())
-  name          String         @unique
+  id            String           @id @default(cuid())
+  name          String
   description   String?
-  createdAt     DateTime       @default(now())
+  // Self-referential adjacency list: a category may nest under a parent to
+  // arbitrary depth (null parentId = top-level). Names are unique within a
+  // parent, not globally.
+  parentId      String?
+  parent        ReportCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children      ReportCategory[] @relation("CategoryTree")
+  createdAt     DateTime         @default(now())
   reportTypes   ReportType[]
   ruleTemplates RuleTemplate[]
+
+  @@unique([parentId, name])
+  @@index([parentId])
 }
 
 model ReportType {
@@ -84,6 +183,11 @@ model ReportType {
   submissions        ReportSubmission[]
   requirements       ReportingRequirement[]
   definitionVersions ReportDefinitionVersion[]
+
+  // NOTE: a STORED GENERATED `searchVector tsvector` column + GIN index exist in
+  // the DB for full-text search (Phase 25, migration add_full_text_search). They
+  // are managed entirely in SQL — Prisma cannot model GENERATED columns — and are
+  // read only via $queryRaw in the search module, so they are not declared here.
 
   @@index([categoryId])
 }
@@ -155,9 +259,11 @@ model ReportSubmission {
   submittedAt DateTime?
   reviewedAt  DateTime?
 
-  versions    SubmissionVersion[]
-  feedback    Feedback[]
-  attachments Attachment[]
+  versions      SubmissionVersion[]
+  feedback      Feedback[]
+  attachments   Attachment[]
+  notifications Notification[]
+  signOffs      ReportSignOff[]
 
   // One submission per report type, per lab, per period.
   @@unique([reportTypeId, laboratoryId, reportingPeriodId])
@@ -193,7 +299,65 @@ model Feedback {
   // Optional anchoring to a specific section/field of the report.
   sectionKey   String?
   fieldKey     String?
+  // Threading: a reply points at the root feedback it answers. A thread is a
+  // root (parentId null) plus its replies. History is append-only — never edited.
+  parentId     String?
+  parent       Feedback?        @relation("FeedbackThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      Feedback[]       @relation("FeedbackThread")
+  // Thread resolution (Phase 24). Only meaningful on a thread root. A resolved
+  // thread is hidden-but-preserved in the UI; the records themselves are never
+  // deleted (CLAUDE.md auditability). Reopening clears both fields.
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?            @relation("feedbackResolvedBy", fields: [resolvedById], references: [id])
+  // @mentions captured on this message (Phase 24).
+  mentions     FeedbackMention[]
   createdAt    DateTime         @default(now())
+
+  // NOTE: a STORED GENERATED `searchVector tsvector` column + GIN index exist in
+  // the DB for full-text search over the message (Phase 25, migration
+  // add_full_text_search), managed in SQL and read via $queryRaw — see ReportType.
+
+  @@index([submissionId])
+  @@index([parentId])
+}
+
+/// An @mention of a user inside a feedback message (Phase 24). The mentioned
+/// user is notified and is always someone authorized to see the submission
+/// (enforced server-side when the mention is recorded). Append-only history.
+model FeedbackMention {
+  id              String   @id @default(cuid())
+  feedbackId      String
+  feedback        Feedback @relation(fields: [feedbackId], references: [id], onDelete: Cascade)
+  mentionedUserId String
+  mentionedUser   User     @relation("feedbackMentionedUser", fields: [mentionedUserId], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@unique([feedbackId, mentionedUserId])
+  @@index([mentionedUserId])
+}
+
+/// An accountable, immutable digital sign-off recorded when a reviewer completes
+/// a review by approving a submission (Phase 27). It captures who signed, when,
+/// the submission version they signed, the definition version in force, a typed
+/// full-name affirmation and an optional note. Rows are append-only — never
+/// updated — so the approval record cannot be silently altered, and are kept as
+/// part of the submission's history.
+model ReportSignOff {
+  id                  String                   @id @default(cuid())
+  submissionId        String
+  submission          ReportSubmission         @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  signedById          String
+  signedBy            User                     @relation("signOffSignedBy", fields: [signedById], references: [id])
+  // The submission version (currentVersion) that was approved, and the definition
+  // version in force at approval — so it is unambiguous what was signed.
+  versionNumber       Int
+  definitionVersionId String?
+  definitionVersion   ReportDefinitionVersion? @relation(fields: [definitionVersionId], references: [id])
+  // Typed full-name affirmation captured at approval (snapshot; not a crypto signature).
+  confirmedName       String
+  note                String?
+  createdAt           DateTime                 @default(now())
 
   @@index([submissionId])
 }
@@ -236,6 +400,7 @@ model ReportDefinitionVersion {
 
   rules       BusinessRule[]
   submissions ReportSubmission[]
+  signOffs    ReportSignOff[]
 
   @@unique([reportTypeId, version])
   @@index([reportTypeId])
@@ -299,4 +464,52 @@ model AuditLog {
 
   @@index([actorId])
   @@index([entityType, entityId])
+}
+
+/// An in-app notification addressed to a single recipient (Phase 9). Created as
+/// a side effect of workflow/feedback events; never overwrites history. Email
+/// and other channels can be layered on later without changing this record.
+model Notification {
+  id          String   @id @default(cuid())
+  recipientId String
+  recipient   User     @relation("notificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  type        String // NotificationType enum value
+  title       String
+  body        String
+  // Optional deep link to the submission the event concerns.
+  submissionId String?
+  submission   ReportSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  // Deep-link hints for a reminder whose report has not been started yet (no
+  // submission exists): the slot the lab head should create/continue. Plain
+  // columns — a lightweight navigation hint, not part of the domain graph.
+  reportTypeId      String?
+  reportingPeriodId String?
+  // Who triggered the event (nullable so a deleted actor doesn't drop the notice).
+  actorId     String?
+  actor       User?    @relation("notificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  // Null while unread; set to the time the recipient marked it read.
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId, readAt])
+  @@index([submissionId])
+}
+
+/// Idempotency marker for scheduled deadline/overdue reminders (Phase 17). One
+/// row records that a given reminder type was already emitted for an expected
+/// submission slot — the (reportType, laboratory, period) triple — so the daily
+/// sweep never re-notifies the same slot. A slot can receive at most one
+/// DEADLINE_APPROACHING and one REPORT_OVERDUE over its lifetime. Plain columns
+/// (no relations): this is a lightweight append-only log, not part of the domain
+/// graph, and it survives independently of the slot's eventual submission.
+model ReminderDispatch {
+  id                String   @id @default(cuid())
+  reportTypeId      String
+  laboratoryId      String
+  reportingPeriodId String
+  type              String // NotificationType value (DEADLINE_APPROACHING / REPORT_OVERDUE)
+  sentAt            DateTime @default(now())
+
+  @@unique([reportTypeId, laboratoryId, reportingPeriodId, type])
+  @@index([reportingPeriodId])
 }
